@@ -557,7 +557,7 @@ app.put('/project/update', (req, res) => {
     if(id !== '' && name !== ''  && tokenLineNotify !== '') // && conJob !== ''
     {
         db.query(
-            "UPDATE lp_project SET name = ?, con_job = ?, token_line_notify = ?, update_date = ? WHERE Id  = ?",
+            "UPDATE lp_project SET name = ?, con_job = ?, token_line_notify = ?, update_date = ? WHERE id  = ?",
             [name, conJob,  tokenLineNotify, update_date, id],
             (error, result) => {
                 if(error) {
@@ -612,6 +612,118 @@ app.get('/project/detail/:id', (req, res) => {
         }
     });
 });
+
+// === new === //
+
+app.post('/host/add', (req, res) => {
+    const projectId = req.body.projectId;
+    const machineName = req.body.machineName;
+    const dutyId = req.body.dutyId;
+    const publicIp = req.body.publicIp;
+    const privateIp = req.body.privateIp;
+    const service = req.body.service;
+    const remark = req.body.remark;
+    const createDate = new Date();
+
+    // console.log(req)
+
+    // res.json({
+    //     status: 200,
+    //     message: projectId
+    //     // message: [projectId, machineName, publicIp, privateIp]
+    // })
+
+    if(projectId !== '' && machineName !== '' && publicIp !== '' && privateIp !== '')
+    {
+        db.query(
+            "INSERT INTO lp_host (project_id, machine_name, duty_id, public_ip, private_ip, port, remark, create_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [projectId, machineName, dutyId, publicIp, privateIp, service, remark, createDate],
+            (error, result) => {
+                if(error) {
+                    console.log(error);
+                }
+                else {
+                    res.json({
+                        status: 200,
+                        message: 'บันทึกข้อมูลเรียบร้อย'
+                    })
+                }
+            }
+         );
+    }
+    else
+    {
+        res.json({
+            status: 400,
+            message: 'Data is null or empty!'
+        })
+    }
+});
+
+app.put('/host/update', (req, res) => {
+
+    const id = req.body.id;
+    const projectId = req.body.projectId;
+    const machineName = req.body.machineName;
+    const dutyId = req.body.dutyId;
+    const publicIp = req.body.publicIp;
+    const privateIp = req.body.privateIp;
+    const service = req.body.service;
+    const remark = req.body.remark;
+    const update_date = new Date();
+
+    if(id !== '' && projectId !== '' && machineName !== '' && publicIp !== '' && privateIp !== '')
+    {
+        db.query(
+            "UPDATE lp_host SET project_id = ?, machine_name = ?, duty_id = ?, public_ip = ?, private_ip = ?, port = ?, remark = ?, update_date = ? WHERE id  = ?",
+            [projectId, machineName, dutyId, publicIp, privateIp, service, remark, update_date, id],
+            (error, result) => {
+                if(error) {
+                    console.log(error);
+                }
+                else {
+                    res.json({
+                        status: 200,
+                        message: 'แก้ไขข้อมูลเรียบร้อย'
+                    })
+                }
+            }
+         );
+    }
+    else
+    {
+        res.json({
+            status: 400,
+            message: 'Data is null or empty!'
+        })
+    }
+});
+
+app.delete('/host/delete/:id', (req, res) => {
+    const id = req.params.id;
+
+    db.query(
+        "DELETE FROM lp_host WHERE id = ?", id, (err, result) =>
+        {
+            if(err)
+            {
+                console.log(err);
+            }
+            else
+            {
+                res.json({
+                    status: 200,
+                    message: 'ลบข้อมูลเรียบร้อย'
+                })
+            }
+        });
+
+})
+
+
+
+
+// ======================== //
 
 /** === Host === */
 app.get('/hostList', async (req, res) => {
