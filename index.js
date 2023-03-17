@@ -10,8 +10,9 @@ const urlStatusCode = require('url-status-code')
 // const QueryBuilder = require('node-querybuilder');
 
 const {db, pool} = require('./config/db');
-const { join } = require('path');
-const { json } = require('express');
+const { join, resolve } = require('path');
+const { json, response } = require('express');
+const { rejects } = require('assert');
 
 
 app.use(cors());
@@ -489,7 +490,144 @@ app.get('/employee', (req, res) => {
     });
 });
 
-/** === Project === */
+// ======================== //
+
+app.get('/check_host/:projectId', async (req, res) => {
+
+    const projectId = req.params.projectId;
+
+    await getHostListById(projectId)
+    .then((resHostListById) => {
+        resHostListById.forEach( async (hostDetail, key) => {
+
+            await processHost(hostDetail);
+
+            // if(hostDetail.public_ip)
+            // {
+            //     const host = hostDetail.public_ip;
+            //     console.log(host);
+            // }
+        
+        });
+    });
+     
+    // pool.get_connection( qb => {
+    //     qb.select('*')
+    //     .where({project_id: projectId})
+    //     // .where({type: 'rocky', 'diameter <': 12000})
+    //     .get('lp_host', (err, response) => {
+    //         // qb.release();
+
+    //         // console.log("Results:", response);
+    
+    //         if (err) return console.error("Uh oh! Couldn't get results: " + err.msg);
+    
+    //         // SELECT `name`, `position` FROM `lp_host` WHERE `type` = 'rocky' AND `diameter` < 12000
+    //         // console.log("Query Ran: " + qb.last_query());
+    
+    //         // [{name: 'Mercury', position: 1}, {name: 'Mars', position: 4}]
+    //         // console.log("Results:", response);
+
+    //         /** Loop forEach */
+    //         response.forEach( (hostDetail, key) => {
+
+    //             // console.log(hostDetail.public_ip);
+
+    //             if(hostDetail.public_ip !== undefined)
+    //             {
+    //                 const host = hostDetail.public_ip 
+
+    //                 ping.promise.probe(host)
+    //                 .then(function (pingResponse) {
+    //                     // console.log(pingResponse);
+            
+    //                     if(pingResponse.alive === true)
+    //                     {
+    //                         /** update status */
+    //                         qb.update('lp_host', {'status': 200}, {Id: hostDetail.Id});
+    //                     }
+                    
+    //                     if(pingResponse.alive === false)
+    //                     {
+    //                         /** update status */
+    //                         qb.update('lp_host', {'status': 500}, {Id: hostDetail.Id});
+
+    //                         /** start line  notify */
+    //                         const url_line_notification = "https://notify-api.line.me/api/notify";
+
+    //                         /** เขียน message */
+    //                         // ชื่อโครงการ : ' + hostDetail.Name_project + '\n 
+    //                         const message = 'ชื่อเครื่อง : ' + hostDetail.machine_name + '\n Public IP : ' + hostDetail.public_ip + '\n Status : ' + 500 ;
+
+    //                         request({
+    //                             method: 'POST',
+    //                             uri: url_line_notification,
+    //                             header: {
+    //                                 'Content-Type': 'multipart/form-data',
+    //                             },
+    //                             auth: {
+    //                                 bearer: 'Fr48xE3Sld2ibeFboVF083GNPm38FUT0vZgnCk5Vvi2',
+    //                             },
+    //                             form: {
+    //                                 message: message
+    //                             },
+    //                         }, (err, httpResponse, body) => {
+    //                             if (err) {
+    //                                 console.log(err)
+    //                             } else {
+    //                                 // console.log(body)
+    //                                 // res.json({
+    //                                 //     // httpResponse: httpResponse,
+    //                                 //     body: body
+    //                                 // });
+
+    //                                 // res.send(body)
+    //                             }
+    //                         });
+    //                         /** start line  notify */
+    //                     }
+    //                 });
+    //             }
+            
+    //         });
+    //         /** End Loop forEach */
+
+    //     });
+
+    // });
+
+    // setTimeout( () => {
+    //     pool.get_connection(qb => {
+    //         qb.select('*')
+    //         .get('lp_host', (err, response) => {
+    //             // qb.release();
+
+    //             if (err) return console.error("Uh oh! Couldn't get results: " + err.msg);
+
+    //             res.json({
+    //                 status : 200,
+    //                 dataList: response
+    //             })
+
+    //         });
+    //     });
+    // }, 2000);
+
+    /** === การเรียกใช้ฟังก์ชัน === */
+    await getHostListById(projectId).then((resHostListById) => {
+        if(resHostListById)
+        {
+            // console.log('Host List By Id : ' + resHostListById);
+            res.json({
+                status : 200,
+                dataList: resHostListById
+            })
+        }
+    });
+    
+});
+
+/** === Project new === */
 app.get('/projectList', (req, res) => {
     db.query('select * from lp_project', (err, rows) => {
         if (err) {
@@ -613,17 +751,22 @@ app.get('/project/detail/:id', (req, res) => {
     });
 });
 
-// === new === //
+// === Host new === //
 
 app.post('/host/add', (req, res) => {
-    const projectId = req.body.projectId;
-    const machineName = req.body.machineName;
-    const dutyId = req.body.dutyId;
-    const publicIp = req.body.publicIp;
-    const privateIp = req.body.privateIp;
-    const service = req.body.service;
-    const remark = req.body.remark;
-    const createDate = new Date();
+    const projectId     = req.body.projectId;
+    const machineName   = req.body.machineName;
+    const dutyId        = req.body.dutyId;
+    const publicIp      = (req.body.publicIp)? req.body.publicIp : null ;
+    const privateIp     = req.body.privateIp;
+    const service       = req.body.service;
+    const remark        = req.body.remark;
+    const createDate    = new Date();
+
+    const sqlTypeId     = (req.body.sqlTypeId)? req.body.sqlTypeId : null; 
+    const username      = (req.body.username)? req.body.username : null; 
+    const password      = (req.body.password)? req.body.password : null; 
+    const myDatabase    = (req.body.myDatabase)? req.body.myDatabase : null; 
 
     // console.log(req)
 
@@ -633,11 +776,11 @@ app.post('/host/add', (req, res) => {
     //     // message: [projectId, machineName, publicIp, privateIp]
     // })
 
-    if(projectId !== '' && machineName !== '' && publicIp !== '' && privateIp !== '')
+    if(projectId !== '' && machineName !== '' && privateIp !== '') // && publicIp !== ''
     {
         db.query(
-            "INSERT INTO lp_host (project_id, machine_name, duty_id, public_ip, private_ip, port, remark, create_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [projectId, machineName, dutyId, publicIp, privateIp, service, remark, createDate],
+            "INSERT INTO lp_host (project_id, machine_name, duty_id, public_ip, private_ip, port, remark, sql_type_id, username, password, my_database, create_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [projectId, machineName, dutyId, publicIp, privateIp, service, remark, sqlTypeId, username, password, myDatabase, createDate],
             (error, result) => {
                 if(error) {
                     console.log(error);
@@ -662,21 +805,26 @@ app.post('/host/add', (req, res) => {
 
 app.put('/host/update', (req, res) => {
 
-    const id = req.body.id;
-    const projectId = req.body.projectId;
-    const machineName = req.body.machineName;
-    const dutyId = req.body.dutyId;
-    const publicIp = req.body.publicIp;
-    const privateIp = req.body.privateIp;
-    const service = req.body.service;
-    const remark = req.body.remark;
-    const update_date = new Date();
+    const id            = req.body.id;
+    const projectId     = req.body.projectId;
+    const machineName   = req.body.machineName;
+    const dutyId        = req.body.dutyId;
+    const publicIp      = (req.body.publicIp)? req.body.publicIp : null ;
+    const privateIp     = req.body.privateIp;
+    const service       = req.body.service;
+    const remark        = req.body.remark;
+    const update_date   = new Date();
 
-    if(id !== '' && projectId !== '' && machineName !== '' && publicIp !== '' && privateIp !== '')
+    const sqlTypeId     = (req.body.sqlTypeId)? req.body.sqlTypeId : null; 
+    const username      = (req.body.username)? req.body.username : null; 
+    const password      = (req.body.password)? req.body.password : null; 
+    const myDatabase    = (req.body.myDatabase)? req.body.myDatabase : null; 
+
+    if(id !== '' && projectId !== '' && machineName !== '' && privateIp !== '') // && publicIp !== ''
     {
         db.query(
-            "UPDATE lp_host SET project_id = ?, machine_name = ?, duty_id = ?, public_ip = ?, private_ip = ?, port = ?, remark = ?, update_date = ? WHERE id  = ?",
-            [projectId, machineName, dutyId, publicIp, privateIp, service, remark, update_date, id],
+            "UPDATE lp_host SET project_id = ?, machine_name = ?, duty_id = ?, public_ip = ?, private_ip = ?, port = ?, remark = ?, sql_type_id = ?, username = ?, password = ?, my_database = ?, update_date = ? WHERE id  = ?",
+            [projectId, machineName, dutyId, publicIp, privateIp, service, remark, sqlTypeId, username, password, myDatabase, update_date, id],
             (error, result) => {
                 if(error) {
                     console.log(error);
@@ -720,12 +868,9 @@ app.delete('/host/delete/:id', (req, res) => {
 
 })
 
-
-
-
 // ======================== //
 
-/** === Host === */
+/** === Host old === */
 app.get('/hostList', async (req, res) => {
     // db.query('select * from lp_host', (err, rows) => {
     //     if (err) {
@@ -868,110 +1013,236 @@ app.delete('/delete/:id', (req, res) => {
 })
 
 /** Function */
-function getHostList() {
+async function getHostList() {
     
-    pool.get_connection( qb => {
-        qb.select('*')
-        .get('lp_host', (err, response) => {
-            // qb.release();
-    
-            if (err) return console.error("Uh oh! Couldn't get results: " + err.msg);
+    const qb = await pool.get_connection();
 
-            // return json({
-            //     status: 200,
-            //     dataList: response
-            // });
-            return response;
-        });
-    });
-}
+    try {
+        const response = await qb.select('*')
+            // .where({project_id : projectId})
+            .get('lp_host');
 
-function updateStatusSendLineNotify(){
-    pool.get_connection( qb => {
-        qb.select('*')
-        // .where({type: 'rocky', 'diameter <': 12000})
-        .get('lp_host', (err, response) => {
-            // qb.release();
-    
-            if (err) return console.error("Uh oh! Couldn't get results: " + err.msg);
-    
-            // SELECT `name`, `position` FROM `lp_host` WHERE `type` = 'rocky' AND `diameter` < 12000
             // console.log("Query Ran: " + qb.last_query());
-    
-            // [{name: 'Mercury', position: 1}, {name: 'Mars', position: 4}]
             // console.log("Results:", response);
 
-            /** Loop forEach */
-            response.forEach( (hostDetail, key) => {
+            if(response)
+            {
+                return response;
+            }
 
-                // console.log(hostDetail.public_ip);
+    } catch (err) {
+        return console.error("Uh oh! Couldn't get results: " + err.msg);
+    } finally {
+        qb.release();
+    }
+}
 
-                if(hostDetail.public_ip !== undefined)
+async function getHostListById(projectId) {
+
+    const qb = await pool.get_connection();
+    try {
+        const response = await qb.select('*')
+            .where({project_id : projectId})
+            .get('lp_host');
+
+            // console.log("Query Ran: " + qb.last_query());
+            // console.log("Results:", response);
+
+            if(response)
+            {
+                return response;
+            }
+
+    } catch (err) {
+        return console.error("Uh oh! Couldn't get results: " + err.msg);
+    } finally {
+        qb.release();
+    }
+}
+
+function processHost(hostDetail)
+{
+    /** === Web or API === */
+    if( hostDetail.duty_id && (hostDetail.duty_id === 1 || hostDetail.duty_id === 2) )
+    {
+        if(hostDetail.public_ip)
+        {
+            const objHttp = {};
+
+            objHttp.host = hostDetail.public_ip;
+            if(hostDetail.port)
+            {
+                objHttp.port = hostDetail.port;
+            }
+
+            console.log(objHttp);
+            const httpRequest =  http.get(objHttp, function(httpResponse){
+                if( httpResponse.statusCode == 200 ||  httpResponse.statusCode == 302)
                 {
-                    const host = hostDetail.public_ip 
+                    /** === เรียกใช้ฟังก์ชัน === */
+                    updateStatusSendLineNotify(hostDetail, httpResponse.statusCode, false)
 
-                    ping.promise.probe(host)
-                    .then(function (pingResponse) {
-                        // console.log(pingResponse);
+                    // console.log(555); 
+    
+                    /** update status */
+                    // qb.update('lp_host', {'Status': httpResponse.statusCode}, {Id: hostDetail.Id});
+                }
+                else
+                {
+                    /** === เรียกใช้ฟังก์ชัน === */
+                    updateStatusSendLineNotify(hostDetail, httpResponse.statusCode, true)
+    
+                    // console.log(666); 
+
+                    /** update status */
+                    // qb.update('lp_host', {'Status': httpResponse.statusCode}, {Id: hostDetail.Id});
+                }
+            });
+    
+            /** === กรณี http error === */
+            httpRequest.on('error', () => {
             
-                        if(pingResponse.alive === true)
-                        {
-                            /** update status */
-                            qb.update('lp_host', {'Status': 200}, {Id: hostDetail.Id});
-                        }
-                    
-                        if(pingResponse.alive === false)
-                        {
-                            /** update status */
-                            qb.update('lp_host', {'Status': 500}, {Id: hostDetail.Id});
+                /** === เรียกใช้ฟังก์ชัน === */
+                updateStatusSendLineNotify(hostDetail, 500, true)
 
-                            /** start line  notify */
-                            const url_line_notification = "https://notify-api.line.me/api/notify";
+                // console.log(777); 
+        
+                /** update status */
+                // qb.update('lp_host', {'Status': 500}, {Id: hostDetail.Id});
+            });
+            /** === /กรณี http error === */
+        }
+       
+    }
 
-                            /** เขียน message */
-                            const message = 'ชื่อโครงการ : ' + hostDetail.Name_project + '\n ชื่อระบบงาน : ' + hostDetail.machine_name + '\n Public IP : ' + hostDetail.public_ip + '\n Status : ' + 500 ;
+    // if(hostDetail.public_ip)
+    // {
+    //     const host = hostDetail.public_ip 
 
-                            request({
-                                method: 'POST',
-                                uri: url_line_notification,
-                                header: {
-                                    'Content-Type': 'multipart/form-data',
-                                },
-                                auth: {
-                                    bearer: 'Fr48xE3Sld2ibeFboVF083GNPm38FUT0vZgnCk5Vvi2',
-                                },
-                                form: {
-                                    message: message
-                                },
-                            }, (err, httpResponse, body) => {
-                                if (err) {
-                                    console.log(err)
-                                } else {
-                                    // console.log(body)
-                                    // res.json({
-                                    //     // httpResponse: httpResponse,
-                                    //     body: body
-                                    // });
 
-                                    // res.send(body)
-                                }
-                            });
-                            /** start line  notify */
+    //     ping.promise.probe(host)
+    //     .then(function (pingResponse) {
+    //         // console.log(pingResponse);
+
+    //         if(pingResponse.alive === true)
+    //         {
+    //             /** update status */
+    //             qb.update('lp_host', {'status': 200}, {Id: hostDetail.Id});
+    //         }
+        
+    //         if(pingResponse.alive === false)
+    //         {
+    //             /** update status */
+    //             qb.update('lp_host', {'status': 500}, {Id: hostDetail.Id});
+
+    //             /** start line  notify */
+    //             const url_line_notification = "https://notify-api.line.me/api/notify";
+
+    //             /** เขียน message */
+    //             // ชื่อโครงการ : ' + hostDetail.Name_project + '\n 
+    //             const message = 'ชื่อเครื่อง : ' + hostDetail.machine_name + '\n Public IP : ' + hostDetail.public_ip + '\n Status : ' + 500 ;
+
+    //             request({
+    //                 method: 'POST',
+    //                 uri: url_line_notification,
+    //                 header: {
+    //                     'Content-Type': 'multipart/form-data',
+    //                 },
+    //                 auth: {
+    //                     bearer: 'Fr48xE3Sld2ibeFboVF083GNPm38FUT0vZgnCk5Vvi2',
+    //                 },
+    //                 form: {
+    //                     message: message
+    //                 },
+    //             }, (err, httpResponse, body) => {
+    //                 if (err) {
+    //                     console.log(err)
+    //                 } else {
+    //                     // console.log(body)
+    //                     // res.json({
+    //                     //     // httpResponse: httpResponse,
+    //                     //     body: body
+    //                     // });
+
+    //                     // res.send(body)
+    //                 }
+    //             });
+    //             /** start line  notify */
+    //         }
+    //     });
+
+
+    // }
+}
+
+async function updateStatusSendLineNotify(hostDetail, status, lineNotify = false){
+
+    const qb = await pool.get_connection();
+
+    /** update status */
+    await qb.update('lp_host', {'status': status}, {id: hostDetail.id});
+    
+
+    if( lineNotify === true)
+    {
+
+        try {
+            const response = await qb.select('*')
+                .where({id : hostDetail.project_id})
+                .get('lp_project');
+    
+                // console.log("Query Ran: " + qb.last_query());
+                // console.log("Results:", response);
+    
+                if(response)
+                {
+                    /** start line  notify */
+                    const url_line_notification = "https://notify-api.line.me/api/notify";
+
+                    /** เขียน message */
+                    const message = 'ชื่อโครงการ : ' + response[0].name + 
+                        '\n ชื่อระบบงาน : ' + hostDetail.machine_name + 
+                        '\n Public IP : ' + hostDetail.public_ip + 
+                        '\n Status : ' + status ;
+
+                    request({
+                        method: 'POST',
+                        uri: url_line_notification,
+                        header: {
+                            'Content-Type': 'multipart/form-data',
+                        },
+                        auth: {
+                            bearer: response[0].token_line_notify,
+                            // bearer: 'Fr48xE3Sld2ibeFboVF083GNPm38FUT0vZgnCk5Vvi2',
+                        },
+                        form: {
+                            message: message
+                        },
+                    }, (err, httpResponse, body) => {
+                        if (err) {
+                            console.log(err)
+                        } else {
+                            // console.log(body)
+                            // res.json({
+                            //     // httpResponse: httpResponse,
+                            //     body: body
+                            // });
+
+                            // res.send(body)
                         }
                     });
+                    /** start line  notify */
+                  
                 }
-            
-            });
-            /** End Loop forEach */
-
-            return json({
-                status: 200,
-                message: 'สำเร็จ'
-            });
-
-        });
-    });
+    
+        } catch (err) {
+            return console.error("Uh oh! Couldn't get results: " + err.msg);
+        } finally {
+            qb.release();
+        }
+    }
 }
+
 
 app.listen('3001', (req, res) => {
     console.log('Server running on localhost:3001');
