@@ -5,11 +5,10 @@ const queryBuilder = require('node-querybuilder');
 // กำหนดการเชื่อมต่อฐานข้อมู
 const db = mysql.createConnection({
     host: 'localhost',
-    user: 'admin',
-    password: '1234',
+    user: 'root',
+    password: '123456',
     database: 'moniter',
-    port: '6033'
-
+    // port: '3306'
 });
 
 // ทำการเชื่อมต่อกับฐานข้อมูล 
@@ -33,9 +32,9 @@ db.connect(function(err) {
 const settings = {
     host: 'localhost',
     database: 'moniter',
-    user: 'admin',
-    password: '1234',
-    port: '6033'
+    user: 'root',
+    password: '123456',
+    // port: '3306'
 };
 
 const pool = new queryBuilder(settings, 'mysql', 'pool');

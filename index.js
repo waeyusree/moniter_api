@@ -4,16 +4,23 @@ const app       = express();
 const request   = require('request');
 const cors      = require('cors');
 
+const bcrypt    = require('bcrypt');
+const jwt       = require("jsonwebtoken");
+
+const auth      = require("./middleware/auth");
+
 const http      = require('http');
 const ping      = require('ping');
 const urlStatusCode = require('url-status-code')
-// const QueryBuilder = require('node-querybuilder');
 
+const mysql = require('mysql');
+const queryBuilder = require('node-querybuilder');
 const {db, pool} = require('./config/db');
-const { join, resolve } = require('path');
-const { json, response } = require('express');
-const { rejects } = require('assert');
 
+const excelJS = require("exceljs");
+const { saveAs } = require("file-saver");
+
+require("dotenv").config();
 
 app.use(cors());
 app.use(express.json());
@@ -23,6 +30,130 @@ app.use(express.json());
 // app.set('view engine', 'ejs');
 // app.set('views', 'views');
 // app.set('view options', { layout: false });
+
+app.post("/register", async (req, res) => {
+
+    const qb = await pool.get_connection();
+
+    // Our register logic starts here
+    try {
+      // Get user input
+      const { first_name, last_name, email, username, password } = req.body;
+  
+      // Validate user input
+    //   if (!(email && username && password && first_name && last_name)) {
+    //     res.status(400).send("All input is required");
+    //   }
+  
+      // check if user already exist
+      // Validate if user exist in our database
+    //   const oldUser = await User.findOne({ email });
+      const oldUser = await qb.where('username', username).get('lp_user');
+
+      if (oldUser.length > 0) {
+        return res.status(409).send("User Already Exist. Please Login");
+      }
+
+      //Encrypt user password
+      encryptedPassword = await bcrypt.hash(password, 10);
+  
+      // Create user in our database
+    //   const user = await User.create({
+    //     first_name,
+    //     last_name,
+    //     email: email.toLowerCase(), // sanitize: convert email to lowercase
+    //     password: encryptedPassword,
+    //   });
+
+      // result: {insert_id: [{id: 12345}], affected_rows: 1, changed_rows: 0}
+      const result = await qb.returning('*').insert('lp_user', {
+        username: username, 
+        password: encryptedPassword,
+        first_name: first_name,
+        last_name: last_name,
+        email: email.toLowerCase(),
+        // create_date: new Date()
+      });
+
+    //   console.log(result.insert_id);
+    //   return
+
+      const resUser = await qb.where('id', result.insert_id).get('lp_user');
+      const user    = resUser[0];
+  
+      // Create token
+      const token = jwt.sign(
+        { user_id: user.id, username },
+        process.env.TOKEN_KEY,
+        // 'waeyusree',
+        {
+          expiresIn: "2h",
+        }
+      );
+      // save user token
+      user.token = token;
+  
+      // return new user
+      res.status(201).json(user);
+    } catch (err) {
+      console.log(err);
+    }
+    // Our register logic ends here
+});
+
+app.post("/login", async (req, res) => {
+
+    const qb = await pool.get_connection();
+
+    // Our login logic starts here
+    try {
+      // Get user input
+      const { username, password } = req.body;
+  
+      // Validate user input
+      if (!(username && password)) {
+        res.json({
+            status : 400,
+            message : "All input is required"
+        });
+      }
+      // Validate if user exist in our database
+    //   const user = await User.findOne({ email });
+    const resUser = await qb.where('username', username).get('lp_user');
+    const user    = resUser[0];
+  
+      if (user && (await bcrypt.compare(password, user.password))) {
+        // Create token
+        const token = jwt.sign(
+          { user_id: user.id, username },
+          process.env.TOKEN_KEY,
+        //   'waeyusree',
+          {
+            expiresIn: "2h",
+          }
+        );
+  
+        // save user token
+        user.token = token;
+  
+        // user
+        res.json({
+            status : 200,
+            first_name  : user.first_name,
+            last_name   : user.last_name,
+            token       : user.token,
+            // user : user // all
+        });
+      }
+      res.json({
+            status : 400,
+            message : "Username หรือ Password ไม่ถูกต้อง!"
+      });
+    } catch (err) {
+      console.log(err);
+    }
+    // Our register logic ends here
+});
 
 app.get('/', (req, res) => {
     // res.render('index');
@@ -115,14 +246,6 @@ app.get('/check_host_test', (req, res) => {
 
 app.get('/check_host_old', (req, res) => {
 
-    // const settings = {
-    //     host: 'localhost',
-    //     database: 'moniter',
-    //     user: 'root',
-    //     password: ''
-    // };
-    // const pool = new QueryBuilder(settings, 'mysql', 'pool');
-     
     pool.get_connection( qb => {
         qb.select('*')
         // .where({type: 'rocky', 'diameter <': 12000})
@@ -255,7 +378,6 @@ app.get('/check_host_old', (req, res) => {
             /** End Loop forEach */
 
         });
-
     });
 
     setTimeout( () => {
@@ -279,14 +401,6 @@ app.get('/check_host_old', (req, res) => {
 
 app.get('/check_host', (req, res) => {
 
-    // const settings = {
-    //     host: 'localhost',
-    //     database: 'moniter',
-    //     user: 'root',
-    //     password: ''
-    // };
-    // const pool = new QueryBuilder(settings, 'mysql', 'pool');
-     
     pool.get_connection( qb => {
         qb.select('*')
         // .where({type: 'rocky', 'diameter <': 12000})
@@ -424,9 +538,10 @@ app.get('/check_db_mysql', (req, res) => {
     // setup your databse (username & password & databasename)
     var dataDb = mysql.createConnection({
         host: 'localhost',
-        user: 'root',
-        password: '',
-        database: 'moniter'
+        user: 'admin',
+        password: '1234',
+        database: 'moniter',
+        // port: '6033'
     });
 
     // console.log(dataDb);
@@ -435,7 +550,10 @@ app.get('/check_db_mysql', (req, res) => {
     dataDb.connect(function(err) {
 
         if (err) {
-            // res.send(err)
+            // res.json({
+            //     status : 500,
+            //     message: 'error: ' + err.message
+            // })
             return console.error('error: ' + err.message);
         }
 
@@ -445,6 +563,34 @@ app.get('/check_db_mysql', (req, res) => {
             message: 'Connected to the MySQL server.'
         })
     });
+
+
+    /**===========================================*/
+
+    // const dataDB = {
+    //     host: 'localhost',
+    //     database: 'moniter',
+    //     user: 'admin',
+    //     password: '1234',
+    //     // port: '6033'
+    // };
+    
+    // const dbConnect = new queryBuilder(dataDB, 'mysql', 'pool').get_connection();
+    // try {
+    //     res.json({
+    //         status : 200,
+    //         message: 'Connection Successfuly'
+    //     })
+
+    // } catch (err) {
+    //     res.json({
+    //         status : 500,
+    //         message: err.msg
+    //     })
+    //     return;
+    // } finally {
+    //     dbConnect.release();
+    // }
 
 });
 
@@ -479,18 +625,65 @@ app.get('/notify', (req, res) => {
 
 });
 
-/** === Employee === */
-app.get('/employee', (req, res) => {
-    db.query('select * from employee', (err, rows) => {
-        if (err) {
-            console.log(err);
-        } else {
-            res.send(rows);
-        }
-    });
-});
-
 // ======================== //
+
+app.get('/check_host_interval', async (req, res) => {
+    let condition   = {};
+    // let projectList = '';
+
+    await getProjectList(condition)
+    .then( async (resProjectList) => {
+        if(resProjectList)
+        {
+            await resProjectList.forEach( async (projectDetail, key) => {
+                // console.log(projectDetail)
+        
+                /*=== updateProject ===*/
+                await updateProject(projectDetail.id, {is_process : 1});
+        
+                await getHostListById(projectDetail.id)
+                .then( async (resHostListById) => {
+        
+                    let totalHost = num = 0;
+                    if(resHostListById)
+                    {
+                        totalHost = resHostListById.length;
+                        await resHostListById.forEach( async (hostDetail, key) => {
+                            
+                            await processHost(hostDetail);
+        
+                            num = key+1;
+                            // console.log(totalHost + ' -> ' + num);
+        
+                            // console.log(typeof totalHost);
+                            // console.log(typeof num);
+        
+                            if(totalHost === num)
+                            {
+                                //    console.log(1);
+                                /*=== updateProject ===*/
+                                await updateProject(projectDetail.id, {is_process : 0});
+                            }
+                        });
+                    }
+                });
+            });
+        }
+
+        res.json({
+            status : 200,
+            data : resProjectList
+        })
+
+    });
+
+   
+
+    // return res.json({
+    //     status : 200,
+    //     data : projectList
+    // })
+});
 
 app.get('/check_host/:projectId', async (req, res) => {
 
@@ -499,136 +692,120 @@ app.get('/check_host/:projectId', async (req, res) => {
     await getHostListById(projectId)
     .then((resHostListById) => {
         resHostListById.forEach( async (hostDetail, key) => {
-
             await processHost(hostDetail);
-
-            // if(hostDetail.public_ip)
-            // {
-            //     const host = hostDetail.public_ip;
-            //     console.log(host);
-            // }
-        
         });
-    });
-     
-    // pool.get_connection( qb => {
-    //     qb.select('*')
-    //     .where({project_id: projectId})
-    //     // .where({type: 'rocky', 'diameter <': 12000})
-    //     .get('lp_host', (err, response) => {
-    //         // qb.release();
-
-    //         // console.log("Results:", response);
-    
-    //         if (err) return console.error("Uh oh! Couldn't get results: " + err.msg);
-    
-    //         // SELECT `name`, `position` FROM `lp_host` WHERE `type` = 'rocky' AND `diameter` < 12000
-    //         // console.log("Query Ran: " + qb.last_query());
-    
-    //         // [{name: 'Mercury', position: 1}, {name: 'Mars', position: 4}]
-    //         // console.log("Results:", response);
-
-    //         /** Loop forEach */
-    //         response.forEach( (hostDetail, key) => {
-
-    //             // console.log(hostDetail.public_ip);
-
-    //             if(hostDetail.public_ip !== undefined)
-    //             {
-    //                 const host = hostDetail.public_ip 
-
-    //                 ping.promise.probe(host)
-    //                 .then(function (pingResponse) {
-    //                     // console.log(pingResponse);
-            
-    //                     if(pingResponse.alive === true)
-    //                     {
-    //                         /** update status */
-    //                         qb.update('lp_host', {'status': 200}, {Id: hostDetail.Id});
-    //                     }
-                    
-    //                     if(pingResponse.alive === false)
-    //                     {
-    //                         /** update status */
-    //                         qb.update('lp_host', {'status': 500}, {Id: hostDetail.Id});
-
-    //                         /** start line  notify */
-    //                         const url_line_notification = "https://notify-api.line.me/api/notify";
-
-    //                         /** เขียน message */
-    //                         // ชื่อโครงการ : ' + hostDetail.Name_project + '\n 
-    //                         const message = 'ชื่อเครื่อง : ' + hostDetail.machine_name + '\n Public IP : ' + hostDetail.public_ip + '\n Status : ' + 500 ;
-
-    //                         request({
-    //                             method: 'POST',
-    //                             uri: url_line_notification,
-    //                             header: {
-    //                                 'Content-Type': 'multipart/form-data',
-    //                             },
-    //                             auth: {
-    //                                 bearer: 'Fr48xE3Sld2ibeFboVF083GNPm38FUT0vZgnCk5Vvi2',
-    //                             },
-    //                             form: {
-    //                                 message: message
-    //                             },
-    //                         }, (err, httpResponse, body) => {
-    //                             if (err) {
-    //                                 console.log(err)
-    //                             } else {
-    //                                 // console.log(body)
-    //                                 // res.json({
-    //                                 //     // httpResponse: httpResponse,
-    //                                 //     body: body
-    //                                 // });
-
-    //                                 // res.send(body)
-    //                             }
-    //                         });
-    //                         /** start line  notify */
-    //                     }
-    //                 });
-    //             }
-            
-    //         });
-    //         /** End Loop forEach */
-
-    //     });
-
-    // });
-
-    // setTimeout( () => {
-    //     pool.get_connection(qb => {
-    //         qb.select('*')
-    //         .get('lp_host', (err, response) => {
-    //             // qb.release();
-
-    //             if (err) return console.error("Uh oh! Couldn't get results: " + err.msg);
-
+        res.json({
+            status : 200, 
+        })
+    })
+    // .then(
+    //     await getHostListById(projectId).then((resHostListById) => {
+    //         if(resHostListById)
+    //         {
+    //             // console.log('Host List By Id : ' + resHostListById);
     //             res.json({
     //                 status : 200,
-    //                 dataList: response
+    //                 dataList: resHostListById
     //             })
+    //         }
+    //     })
+    // );
+});
 
-    //         });
-    //     });
-    // }, 2000);
+app.get('/export_host/:projectId', auth, async (req, res) => {
 
-    /** === การเรียกใช้ฟังก์ชัน === */
-    await getHostListById(projectId).then((resHostListById) => {
-        if(resHostListById)
-        {
-            // console.log('Host List By Id : ' + resHostListById);
+    const projectId = req.params.projectId;
+
+    await getHostListById(projectId)
+    .then((resHostListById) => {
+
+        const workbook = new excelJS.Workbook();  // Create a new workbook
+        const worksheet = workbook.addWorksheet("My Users"); // New Worksheet
+        const path = __dirname + "/files";  // Path to download excel
+        // Column for data in excel. key must match data key
+        worksheet.columns = [
+            { header: "ลำดับ", key: "no", width: 10 }, 
+            { header: "ชื่อเครื่อง", key: "machine_name", width: 50 },
+            { header: "หน้าที่", key: "duty_title", width: 10 },
+            { header: "Public IP", key: "public_ip", width: 30 },
+            { header: "Private IP", key: "private_ip", width: 30 },
+            { header: "Port", key: "port", width: 10 },
+            { header: "สถานะ", key: "status", width: 10 },
+            { header: "หมายเหตุ", key: "remark", width: 30 },
+            { header: "วันที่อัพเดทล่าสุด", key: "update_date", width: 20 },
+        ];
+
+        resHostListById.forEach( async (hostDetail, key) => {
+            hostDetail.no = key+1;
+
+            hostDetail.duty_title = '';
+            if(hostDetail.duty_id === 1)
+            {
+                hostDetail.duty_title = "Web";
+            }
+            else if(hostDetail.duty_id === 2)
+            {
+                hostDetail.duty_title = "API";
+            }
+            else if(hostDetail.duty_id === 3)
+            {
+                hostDetail.duty_title = "Database";
+            }
+
+            if(hostDetail.ip_type_id === 1 && hostDetail.public_ip)
+            {
+                hostDetail.public_ip = hostDetail.public_ip + " (ใช้ในการตรวจสอบ)";
+            }
+
+            if(hostDetail.ip_type_id === 2 && hostDetail.private_ip)
+            {
+                hostDetail.private_ip = hostDetail.private_ip + " (ใช้ในการตรวจสอบ)";
+            }
+
+            worksheet.addRow(hostDetail); // Add data in worksheet
+
+        });
+
+        // Making first line in excel bold
+        worksheet.getRow(1).eachCell((cell) => {
+            cell.font = { bold: true };
+        });
+
+        try {
+            // workbook.xlsx.writeFile(`${path}/users.xlsx`)
+            // .then(() => {
+            //     res.json({
+            //         status: 200,
+            //         // message: "file successfully downloaded",
+            //         path: `${path}/users.xlsx`,
+            //     });
+            // });
+
+            // res is a Stream object
+            res.setHeader(
+                "Content-Type",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            );
+            res.setHeader(
+                "Content-Disposition",
+                "attachment; filename=" + "tutorials.xlsx"
+            );
+            
+            return workbook.xlsx.write(res).then(function () {
+                res.status(200).end();
+            });
+
+        } catch (err) {
             res.json({
-                status : 200,
-                dataList: resHostListById
-            })
+                status: 400,
+                message: "Something went wrong",
+            });
         }
     });
-    
 });
 
 /** === Project new === */
-app.get('/projectList', (req, res) => {
+app.get('/projectList', auth, (req, res) => {
     db.query('select * from lp_project', (err, rows) => {
         if (err) {
             console.log(err);
@@ -757,6 +934,7 @@ app.post('/host/add', (req, res) => {
     const projectId     = req.body.projectId;
     const machineName   = req.body.machineName;
     const dutyId        = req.body.dutyId;
+    const ipTypeId      = req.body.ipTypeId;
     const publicIp      = (req.body.publicIp)? req.body.publicIp : null ;
     const privateIp     = req.body.privateIp;
     const service       = req.body.service;
@@ -776,11 +954,11 @@ app.post('/host/add', (req, res) => {
     //     // message: [projectId, machineName, publicIp, privateIp]
     // })
 
-    if(projectId !== '' && machineName !== '' && privateIp !== '') // && publicIp !== ''
+    if(projectId && machineName && dutyId && privateIp) // && publicIp
     {
         db.query(
-            "INSERT INTO lp_host (project_id, machine_name, duty_id, public_ip, private_ip, port, remark, sql_type_id, username, password, my_database, create_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [projectId, machineName, dutyId, publicIp, privateIp, service, remark, sqlTypeId, username, password, myDatabase, createDate],
+            "INSERT INTO lp_host (project_id, machine_name, duty_id, ip_type_id, public_ip, private_ip, port, remark, sql_type_id, username, password, my_database, create_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [projectId, machineName, dutyId, ipTypeId, publicIp, privateIp, service, remark, sqlTypeId, username, password, myDatabase, createDate],
             (error, result) => {
                 if(error) {
                     console.log(error);
@@ -809,6 +987,7 @@ app.put('/host/update', (req, res) => {
     const projectId     = req.body.projectId;
     const machineName   = req.body.machineName;
     const dutyId        = req.body.dutyId;
+    const ipTypeId      = req.body.ipTypeId;
     const publicIp      = (req.body.publicIp)? req.body.publicIp : null ;
     const privateIp     = req.body.privateIp;
     const service       = req.body.service;
@@ -823,8 +1002,8 @@ app.put('/host/update', (req, res) => {
     if(id !== '' && projectId !== '' && machineName !== '' && privateIp !== '') // && publicIp !== ''
     {
         db.query(
-            "UPDATE lp_host SET project_id = ?, machine_name = ?, duty_id = ?, public_ip = ?, private_ip = ?, port = ?, remark = ?, sql_type_id = ?, username = ?, password = ?, my_database = ?, update_date = ? WHERE id  = ?",
-            [projectId, machineName, dutyId, publicIp, privateIp, service, remark, sqlTypeId, username, password, myDatabase, update_date, id],
+            "UPDATE lp_host SET project_id = ?, machine_name = ?, duty_id = ?, ip_type_id = ?, public_ip = ?, private_ip = ?, port = ?, remark = ?, sql_type_id = ?, username = ?, password = ?, my_database = ?, update_date = ? WHERE id  = ?",
+            [projectId, machineName, dutyId, ipTypeId, publicIp, privateIp, service, remark, sqlTypeId, username, password, myDatabase, update_date, id],
             (error, result) => {
                 if(error) {
                     console.log(error);
@@ -1043,6 +1222,7 @@ async function getHostListById(projectId) {
     try {
         const response = await qb.select('*')
             .where({project_id : projectId})
+            // .limit(1)
             .get('lp_host');
 
             // console.log("Query Ran: " + qb.last_query());
@@ -1060,119 +1240,107 @@ async function getHostListById(projectId) {
     }
 }
 
-function processHost(hostDetail)
+async function processHost(hostDetail)
 {
-    /** === Web or API === */
-    if( hostDetail.duty_id && (hostDetail.duty_id === 1 || hostDetail.duty_id === 2) )
+    let use_ip = "";
+
+    /* === เลือก public_ip === */
+    if(hostDetail.ip_type_id === 1 && hostDetail.public_ip)
     {
-        if(hostDetail.public_ip)
+        use_ip = hostDetail.public_ip;
+    }
+
+    /* === เลือก private_ip === */
+    if(hostDetail.ip_type_id === 2 && hostDetail.private_ip)
+    {
+        use_ip = hostDetail.private_ip;
+    }
+
+    /* === check null use_ip === */
+    if(use_ip)
+    {
+        /** === Web or API === */
+        if( hostDetail.duty_id && (hostDetail.duty_id === 1 || hostDetail.duty_id === 2) )
         {
             const objHttp = {};
 
-            objHttp.host = hostDetail.public_ip;
+            objHttp.host = use_ip;
             if(hostDetail.port)
             {
                 objHttp.port = hostDetail.port;
             }
 
-            console.log(objHttp);
-            const httpRequest =  http.get(objHttp, function(httpResponse){
+            // console.log(objHttp);
+
+            const httpRequest =  await http.get(objHttp, async function(httpResponse){
                 if( httpResponse.statusCode == 200 ||  httpResponse.statusCode == 302)
                 {
                     /** === เรียกใช้ฟังก์ชัน === */
-                    updateStatusSendLineNotify(hostDetail, httpResponse.statusCode, false)
-
-                    // console.log(555); 
-    
-                    /** update status */
-                    // qb.update('lp_host', {'Status': httpResponse.statusCode}, {Id: hostDetail.Id});
+                    await updateStatusSendLineNotify(hostDetail, httpResponse.statusCode, false);
                 }
                 else
                 {
                     /** === เรียกใช้ฟังก์ชัน === */
-                    updateStatusSendLineNotify(hostDetail, httpResponse.statusCode, true)
-    
-                    // console.log(666); 
-
-                    /** update status */
-                    // qb.update('lp_host', {'Status': httpResponse.statusCode}, {Id: hostDetail.Id});
+                    await updateStatusSendLineNotify(hostDetail, httpResponse.statusCode, true);
                 }
             });
-    
-            /** === กรณี http error === */
-            httpRequest.on('error', () => {
-            
-                /** === เรียกใช้ฟังก์ชัน === */
-                updateStatusSendLineNotify(hostDetail, 500, true)
 
-                // console.log(777); 
-        
-                /** update status */
-                // qb.update('lp_host', {'Status': 500}, {Id: hostDetail.Id});
+            /** === กรณี http error === */
+            httpRequest.on('error', async () => {
+                /** === เรียกใช้ฟังก์ชัน === */
+                await updateStatusSendLineNotify(hostDetail, 500, true)
             });
             /** === /กรณี http error === */
+            
         }
-       
+
+        /** === Database === */
+        if( hostDetail.duty_id && hostDetail.duty_id === 3 )
+        {
+            if(hostDetail.username && hostDetail.password && hostDetail.my_database)
+            {
+                // setup your databse (username & password & databasename)
+                var dataDb = await mysql.createConnection({
+                    host: use_ip,
+                    user: hostDetail.username,
+                    password: hostDetail.password,
+                    database: hostDetail.my_database,
+                    port: hostDetail.port ? hostDetail.port : '3306'
+                });
+
+                // console.log(dataDb);
+
+                // check your database connection
+                dataDb.connect(function(err) {
+
+                    if (err) {
+                        /** === เรียกใช้ฟังก์ชัน === */
+                        updateStatusSendLineNotify(hostDetail, 500, true)
+                        return;
+
+                        // res.send(err)
+                        // return console.error('error: ' + err.message);
+                    }
+
+                    /** === เรียกใช้ฟังก์ชัน === */
+                    updateStatusSendLineNotify(hostDetail, 200, false)
+
+                    // console.log('Connected to the MySQL server.');
+                    // res.json({
+                    //     status : 200,
+                    //     message: 'Connected to the MySQL server.'
+                    // })
+                });
+
+            } 
+            else
+            {
+                /** === ค่าว่าง === */
+                /** === เรียกใช้ฟังก์ชัน === */
+                await updateStatusSendLineNotify(hostDetail, 500, true)
+            }
+        }
     }
-
-    // if(hostDetail.public_ip)
-    // {
-    //     const host = hostDetail.public_ip 
-
-
-    //     ping.promise.probe(host)
-    //     .then(function (pingResponse) {
-    //         // console.log(pingResponse);
-
-    //         if(pingResponse.alive === true)
-    //         {
-    //             /** update status */
-    //             qb.update('lp_host', {'status': 200}, {Id: hostDetail.Id});
-    //         }
-        
-    //         if(pingResponse.alive === false)
-    //         {
-    //             /** update status */
-    //             qb.update('lp_host', {'status': 500}, {Id: hostDetail.Id});
-
-    //             /** start line  notify */
-    //             const url_line_notification = "https://notify-api.line.me/api/notify";
-
-    //             /** เขียน message */
-    //             // ชื่อโครงการ : ' + hostDetail.Name_project + '\n 
-    //             const message = 'ชื่อเครื่อง : ' + hostDetail.machine_name + '\n Public IP : ' + hostDetail.public_ip + '\n Status : ' + 500 ;
-
-    //             request({
-    //                 method: 'POST',
-    //                 uri: url_line_notification,
-    //                 header: {
-    //                     'Content-Type': 'multipart/form-data',
-    //                 },
-    //                 auth: {
-    //                     bearer: 'Fr48xE3Sld2ibeFboVF083GNPm38FUT0vZgnCk5Vvi2',
-    //                 },
-    //                 form: {
-    //                     message: message
-    //                 },
-    //             }, (err, httpResponse, body) => {
-    //                 if (err) {
-    //                     console.log(err)
-    //                 } else {
-    //                     // console.log(body)
-    //                     // res.json({
-    //                     //     // httpResponse: httpResponse,
-    //                     //     body: body
-    //                     // });
-
-    //                     // res.send(body)
-    //                 }
-    //             });
-    //             /** start line  notify */
-    //         }
-    //     });
-
-
-    // }
 }
 
 async function updateStatusSendLineNotify(hostDetail, status, lineNotify = false){
@@ -1182,10 +1350,8 @@ async function updateStatusSendLineNotify(hostDetail, status, lineNotify = false
     /** update status */
     await qb.update('lp_host', {'status': status}, {id: hostDetail.id});
     
-
     if( lineNotify === true)
     {
-
         try {
             const response = await qb.select('*')
                 .where({id : hostDetail.project_id})
@@ -1199,40 +1365,73 @@ async function updateStatusSendLineNotify(hostDetail, status, lineNotify = false
                     /** start line  notify */
                     const url_line_notification = "https://notify-api.line.me/api/notify";
 
+                    var title_duty = '';
+                    if(hostDetail.duty_id === 1)
+                    {
+                        title_duty = "Web";
+                    }
+                    else if(hostDetail.duty_id === 2)
+                    {
+                        title_duty = "API";
+                    }
+                    else if(hostDetail.duty_id === 3)
+                    {
+                        title_duty = "Database";
+                    }
+
+                    var title_ip_type = '';
+                    var title_public_ip_use  = hostDetail.public_ip ? hostDetail.public_ip : '';
+                    var title_private_ip_use  = hostDetail.private_ip;
+                    if(hostDetail.ip_type_id === 1)
+                    {
+                        title_ip_type = "Public IP";
+                        title_public_ip_use = '`' + hostDetail.public_ip + '`';
+                    }
+                    else if(hostDetail.ip_type_id === 2)
+                    {
+                        title_ip_type = "Private IP";
+                        title_private_ip_use = '`' + hostDetail.private_ip + '`';
+                    }
+
                     /** เขียน message */
-                    const message = 'ชื่อโครงการ : ' + response[0].name + 
-                        '\n ชื่อระบบงาน : ' + hostDetail.machine_name + 
-                        '\n Public IP : ' + hostDetail.public_ip + 
-                        '\n Status : ' + status ;
+                    const message = '*ชื่อโครงการ :* ' + response[0].name + 
+                        '\n *ชื่อเครื่อง :* ' + hostDetail.machine_name + 
+                        '\n *หน้าที่ :* ' + title_duty + 
+                        // '\n *ตรวจสอบโดยใช้ :* ' + title_ip_type + 
+                        '\n *Public IP :* ' + title_public_ip_use + 
+                        '\n *Private IP :* ' + title_private_ip_use +
+                        '\n *สถานะ :* `Down(' + status + ')`';
 
-                    request({
-                        method: 'POST',
-                        uri: url_line_notification,
-                        header: {
-                            'Content-Type': 'multipart/form-data',
-                        },
-                        auth: {
-                            bearer: response[0].token_line_notify,
-                            // bearer: 'Fr48xE3Sld2ibeFboVF083GNPm38FUT0vZgnCk5Vvi2',
-                        },
-                        form: {
-                            message: message
-                        },
-                    }, (err, httpResponse, body) => {
-                        if (err) {
-                            console.log(err)
-                        } else {
-                            // console.log(body)
-                            // res.json({
-                            //     // httpResponse: httpResponse,
-                            //     body: body
-                            // });
-
-                            // res.send(body)
-                        }
-                    });
+                    if(response[0].token_line_notify)
+                    {
+                        request({
+                            method: 'POST',
+                            uri: url_line_notification,
+                            header: {
+                                'Content-Type': 'multipart/form-data',
+                            },
+                            auth: {
+                                bearer: response[0].token_line_notify,
+                                // bearer: 'Fr48xE3Sld2ibeFboVF083GNPm38FUT0vZgnCk5Vvi2',
+                            },
+                            form: {
+                                message: message
+                            },
+                        }, (err, httpResponse, body) => {
+                            if (err) {
+                                console.log(err)
+                            } else {
+                                // console.log(body)
+                                // res.json({
+                                //     // httpResponse: httpResponse,
+                                //     body: body
+                                // });
+    
+                                // res.send(body)
+                            }
+                        });
+                    }
                     /** start line  notify */
-                  
                 }
     
         } catch (err) {
@@ -1243,6 +1442,110 @@ async function updateStatusSendLineNotify(hostDetail, status, lineNotify = false
     }
 }
 
+/* ============== */
+
+async function checkHostInterval() {
+    let condition   = {};
+
+    await getProjectList(condition)
+    .then( async (resProjectList) => {
+        if(resProjectList)
+        {
+            await resProjectList.forEach( async (projectDetail, key) => {
+                // console.log(projectDetail)
+        
+                /*=== updateProject ===*/
+                await updateProject(projectDetail.id, {is_process : 1});
+        
+                await getHostListById(projectDetail.id)
+                .then( async (resHostListById) => {
+        
+                    let totalHost = num = 0;
+                    if(resHostListById)
+                    {
+                        totalHost = resHostListById.length;
+                        await resHostListById.forEach( async (hostDetail, key) => {
+                            
+                            await processHost(hostDetail);
+        
+                            num = key+1;
+                            // console.log(totalHost + ' -> ' + num);
+        
+                            // console.log(typeof totalHost);
+                            // console.log(typeof num);
+        
+                            if(totalHost === num)
+                            {
+                                   console.log(1);
+                                /*=== updateProject ===*/
+                                await updateProject(projectDetail.id, {is_process : 0});
+                            }
+                        });
+                    }
+                });
+            });
+        }
+
+        // res.json({
+        //     status : 200,
+        //     data : resProjectList
+        // })
+
+    });
+
+    
+}
+
+async function getProjectList(condition) {
+
+    const qb = await pool.get_connection();
+    try {
+        const conditionWhere = Object.assign({
+            is_process : 0
+        }, condition);
+
+        const response = await qb.select('*')
+            // .where({project_id : projectId})
+            .where(conditionWhere)
+            .get('lp_project');
+
+            // console.log("Query Ran: " + qb.last_query());
+            // console.log("Results:", response);
+            // return
+
+            if(response)
+            {
+                return response;
+            }
+
+    } catch (err) {
+        return console.error("Uh oh! Couldn't get results: " + err.msg);
+    } finally {
+        qb.release();
+    }
+}
+
+async function updateProject(id, setValue){
+
+    const qb = await pool.get_connection();
+
+    // await qb.update('lp_project', {'status': status}, {id: hostDetail.id});
+
+    try {
+        const update = await qb.update('lp_project', setValue, {id: id});
+        return update;
+    } catch (err) {
+        return console.error("Uh oh! Couldn't get results: " + err.msg);
+    } finally {
+        qb.release();
+    }
+}
+
+// var minutes = 5, the_interval = minutes * 60 * 1000;
+// setInterval(function() {
+//     checkHostInterval();
+//     console.log("Test interval 1 minutes");
+// }, the_interval);
 
 app.listen('3001', (req, res) => {
     console.log('Server running on localhost:3001');
