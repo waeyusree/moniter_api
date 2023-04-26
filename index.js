@@ -694,6 +694,7 @@ app.get('/check_host/:projectId', async (req, res) => {
         resHostListById.forEach( async (hostDetail, key) => {
             await processHost(hostDetail);
         });
+        
         res.json({
             status : 200, 
         })
@@ -723,6 +724,11 @@ app.get('/export_host/:projectId', auth, async (req, res) => {
         const worksheet = workbook.addWorksheet("My Users"); // New Worksheet
         const path = __dirname + "/files";  // Path to download excel
         // Column for data in excel. key must match data key
+
+        // worksheet.getCell(`A1`).value = "ชื่อโครงการ : ระบบ Local Government (Test )"; // Assign title to cell A1 -- THIS IS WHAT YOU'RE LOOKING FOR.
+        // worksheet.mergeCells('A1:I1'); // Extend cell over all column headers
+        // worksheet.getCell(`A1`).alignment = { horizontal: 'center' }; // Horizontally center your text
+
         worksheet.columns = [
             { header: "ลำดับ", key: "no", width: 10 }, 
             { header: "ชื่อเครื่อง", key: "machine_name", width: 50 },
@@ -730,7 +736,7 @@ app.get('/export_host/:projectId', auth, async (req, res) => {
             { header: "Public IP", key: "public_ip", width: 30 },
             { header: "Private IP", key: "private_ip", width: 30 },
             { header: "Port", key: "port", width: 10 },
-            { header: "สถานะ", key: "status", width: 10 },
+            { header: "สถานะ", key: "status_title", width: 10 },
             { header: "หมายเหตุ", key: "remark", width: 30 },
             { header: "วันที่อัพเดทล่าสุด", key: "update_date", width: 20 },
         ];
@@ -738,6 +744,7 @@ app.get('/export_host/:projectId', auth, async (req, res) => {
         resHostListById.forEach( async (hostDetail, key) => {
             hostDetail.no = key+1;
 
+            /** === start duty === */
             hostDetail.duty_title = '';
             if(hostDetail.duty_id === 1)
             {
@@ -751,7 +758,9 @@ app.get('/export_host/:projectId', auth, async (req, res) => {
             {
                 hostDetail.duty_title = "Database";
             }
+            /** === end duty === */
 
+            /** === start ip_type === */
             if(hostDetail.ip_type_id === 1 && hostDetail.public_ip)
             {
                 hostDetail.public_ip = hostDetail.public_ip + " (ใช้ในการตรวจสอบ)";
@@ -761,6 +770,19 @@ app.get('/export_host/:projectId', auth, async (req, res) => {
             {
                 hostDetail.private_ip = hostDetail.private_ip + " (ใช้ในการตรวจสอบ)";
             }
+            /** === end ip_type === */
+
+            /** === start status === */
+            hostDetail.status_title = '';
+            if(hostDetail.is_status === '0')
+            {
+                hostDetail.status_title = "Down(" + hostDetail.status + ")";
+            }
+            if(hostDetail.is_status === '1')
+            {
+                hostDetail.status_title = "Up(" + hostDetail.status + ")";
+            }
+            /** === end status === */
 
             worksheet.addRow(hostDetail); // Add data in worksheet
 
@@ -1221,7 +1243,11 @@ async function getHostListById(projectId) {
     const qb = await pool.get_connection();
     try {
         const response = await qb.select('*')
-            .where({project_id : projectId})
+            .where({
+                project_id : projectId,
+                is_active : 1, // เปิด
+                // is_active : 0, // ปิด
+            })
             // .limit(1)
             .get('lp_host');
 
@@ -1243,6 +1269,10 @@ async function getHostListById(projectId) {
 async function processHost(hostDetail)
 {
     let use_ip = "";
+
+    /* === clear 'is_status': null, 'status': null === */
+    // const qb = await pool.get_connection();
+    // await qb.update('lp_host', {'is_status': null, 'status': null}, {id: hostDetail.id});
 
     /* === เลือก public_ip === */
     if(hostDetail.ip_type_id === 1 && hostDetail.public_ip)
@@ -1348,7 +1378,15 @@ async function updateStatusSendLineNotify(hostDetail, status, lineNotify = false
     const qb = await pool.get_connection();
 
     /** update status */
-    await qb.update('lp_host', {'status': status}, {id: hostDetail.id});
+    // console.log(typeof status)
+    let is_status = 0;
+    if(status === 200 || status === 302)
+    {
+        is_status = 1;
+    }
+    // console.log(is_status)
+
+    await qb.update('lp_host', {'is_status': is_status, 'status': status}, {id: hostDetail.id});
     
     if( lineNotify === true)
     {
