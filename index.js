@@ -9,6 +9,9 @@ const jwt       = require("jsonwebtoken");
 
 const auth      = require("./middleware/auth");
 
+const { HostList, HostDetail }    = require("./models/host");
+const { AddHostHistory }          = require("./models/hostHistory");
+
 const http      = require('http');
 const ping      = require('ping');
 const urlStatusCode = require('url-status-code')
@@ -699,18 +702,6 @@ app.get('/check_host/:projectId', async (req, res) => {
             status : 200, 
         })
     })
-    // .then(
-    //     await getHostListById(projectId).then((resHostListById) => {
-    //         if(resHostListById)
-    //         {
-    //             // console.log('Host List By Id : ' + resHostListById);
-    //             res.json({
-    //                 status : 200,
-    //                 dataList: resHostListById
-    //             })
-    //         }
-    //     })
-    // );
 });
 
 app.get('/export_host/:projectId', auth, async (req, res) => {
@@ -1387,6 +1378,12 @@ async function updateStatusSendLineNotify(hostDetail, status, lineNotify = false
     // console.log(is_status)
 
     await qb.update('lp_host', {'is_status': is_status, 'status': status}, {id: hostDetail.id});
+
+    /**=== add host history ===*/
+    const resultHostDetail = await HostDetail(hostDetail.id);
+    if(resultHostDetail){
+        await AddHostHistory(resultHostDetail);
+    }
     
     if( lineNotify === true)
     {
