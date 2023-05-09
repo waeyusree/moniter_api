@@ -1,10 +1,6 @@
 const Moment    = require('moment');
 const { pool } = require('../config/db');
 
-// const dateNow = new Date().toISOString().
-//                 replace(/T/, ' ').      // replace T with a space
-//                 replace(/\..+/, '')     // delete the dot and everything after
-
 async function AddHostHistory(hostDetail) {
 
      const data = {
