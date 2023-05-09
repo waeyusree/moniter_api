@@ -6,8 +6,9 @@ const queryBuilder = require('node-querybuilder');
 const db = mysql.createConnection({
     host: 'localhost',
     user: 'root',
-    password: '',
-    database: 'moniter'
+    password: '123456',
+    database: 'moniter',
+    // port: '3306'
 });
 
 // ทำการเชื่อมต่อกับฐานข้อมูล 
@@ -32,7 +33,8 @@ const settings = {
     host: 'localhost',
     database: 'moniter',
     user: 'root',
-    password: ''
+    password: '123456',
+    // port: '3306'
 };
 
 const pool = new queryBuilder(settings, 'mysql', 'pool');
