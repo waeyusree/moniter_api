@@ -5,7 +5,8 @@ const queryBuilder = require('node-querybuilder');
 // กำหนดการเชื่อมต่อฐานข้อมู
 const db = mysql.createConnection({
     // host: 'localhost',
-    host: '209.15.108.158',
+    // host: '209.15.108.158',
+    host: 'db',
     user: 'root',
     password: '123456',
     database: 'moniter',
@@ -32,7 +33,8 @@ db.connect(function(err) {
 /** === start queryBuilder === */
 const settings = {
     // host: 'localhost',
-    host: '209.15.108.158',
+    // host: '209.15.108.158',
+    host: 'db',
     database: 'moniter',
     user: 'root',
     password: '123456',
