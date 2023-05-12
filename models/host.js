@@ -53,7 +53,7 @@ async function HostDetail(hostId) {
 
 async function GetHostListByProjectId(projectId) {
 
-    console.log(444)
+    // console.log(444)
     const qb = await pool.get_connection();
 
     try {
@@ -63,10 +63,10 @@ async function GetHostListByProjectId(projectId) {
                 is_active : 1, // เปิด
                 // is_active : 0, // ปิด
             })
-            .limit(1)
+            // .limit(1)
             .get('lp_host');
 
-            console.log(555)
+            // console.log(555)
 
             // console.log("Query Ran: " + qb.last_query());
             // console.log("Results:", response);

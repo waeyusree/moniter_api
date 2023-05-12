@@ -693,7 +693,7 @@ app.get('/check_host/:projectId', async (req, res) => {
     const projectId = req.params.projectId;
 
     // await getHostListById(projectId)
-    console.log(333)
+    // console.log(333)
 
     await GetHostListByProjectId(projectId)
     .then((resHostListById) => {
