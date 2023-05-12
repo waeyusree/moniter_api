@@ -1385,10 +1385,10 @@ async function updateStatusSendLineNotify(hostDetail, status, lineNotify = false
     await qb.update('lp_host', {'is_status': is_status, 'status': status}, {id: hostDetail.id});
 
     /**=== add host history ===*/
-    // const resultHostDetail = await HostDetail(hostDetail.id);
-    // if(resultHostDetail){
-    //     await AddHostHistory(resultHostDetail);
-    // }
+    const resultHostDetail = await HostDetail(hostDetail.id);
+    if(resultHostDetail){
+        await AddHostHistory(resultHostDetail);
+    }
     
     if( lineNotify === true)
     {
