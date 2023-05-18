@@ -1,16 +1,26 @@
 const mysql = require('mysql');
 const queryBuilder = require('node-querybuilder');
 
+require("dotenv").config();
+
+const {
+    HOSTNAME,
+    USERNAME,
+    PASSWORD,
+    DBNAME,
+    PORT
+} = process.env;
+
+// console.log(DBNAME)
+
 /** === start mysql === */
 // กำหนดการเชื่อมต่อฐานข้อมู
 const db = mysql.createConnection({
-    // host: 'localhost',
-    // host: '209.15.108.158',
-    host: 'db',
-    user: 'root',
-    password: '123456',
-    database: 'moniter',
-    // port: '3306'
+    host: HOSTNAME,
+    user: USERNAME,
+    password: PASSWORD,
+    database: DBNAME,
+    // port: PORT
 });
 
 // ทำการเชื่อมต่อกับฐานข้อมูล 
@@ -32,13 +42,12 @@ db.connect(function(err) {
 
 /** === start queryBuilder === */
 const settings = {
-    // host: 'localhost',
-    // host: '209.15.108.158',
-    host: 'db',
-    database: 'moniter',
-    user: 'root',
-    password: '123456',
-    // port: '3306'
+    host: HOSTNAME,
+    user: USERNAME,
+    password: PASSWORD,
+    database: DBNAME,
+    // port: PORT,
+    connectionLimit:100,
 };
 
 const pool = new queryBuilder(settings, 'mysql', 'pool');

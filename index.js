@@ -9,8 +9,9 @@ const jwt       = require("jsonwebtoken");
 
 const auth      = require("./middleware/auth");
 
-const { HostList, HostDetail, GetHostListByProjectId }    = require("./models/host");
-const { AddHostHistory }          = require("./models/hostHistory");
+const { ProjectList, ProjectDetail }                      = require("./models/project");
+const { HostAdd, HostUpdate, HostDelete, HostList, HostDetail, GetHostListByProjectId }    = require("./models/host");
+const { HostHistoryAdd }                                  = require("./models/hostHistory");
 
 const http      = require('http');
 const ping      = require('ping');
@@ -147,11 +148,16 @@ app.post("/login", async (req, res) => {
             token       : user.token,
             // user : user // all
         });
+        return;
+
       }
+      
       res.json({
             status : 400,
             message : "Username หรือ Password ไม่ถูกต้อง!"
       });
+      return;
+
     } catch (err) {
       console.log(err);
     }
@@ -874,7 +880,7 @@ app.post('/project/add', (req, res) => {
     {
         res.json({
             status: 400,
-            message: 'Data is null or empty!'
+            message: 'กรุณากรอกข้อมูลช่องที่บังคับ!'
         })
     }
 });
@@ -909,7 +915,7 @@ app.put('/project/update', (req, res) => {
     {
         res.json({
             status: 400,
-            message: 'Data is null or empty!'
+            message: 'กรุณากรอกข้อมูลช่องที่บังคับ!'
         })
     }
 });
@@ -948,7 +954,7 @@ app.get('/project/detail/:id', (req, res) => {
 
 // === Host new === //
 
-app.post('/host/add', (req, res) => {
+app.post('/host/add', async (req, res) => {
     const projectId     = req.body.projectId;
     const machineName   = req.body.machineName;
     const dutyId        = req.body.dutyId;
@@ -957,49 +963,66 @@ app.post('/host/add', (req, res) => {
     const privateIp     = req.body.privateIp;
     const service       = req.body.service;
     const remark        = req.body.remark;
-    const createDate    = new Date();
 
     const sqlTypeId     = (req.body.sqlTypeId)? req.body.sqlTypeId : null; 
     const username      = (req.body.username)? req.body.username : null; 
     const password      = (req.body.password)? req.body.password : null; 
     const myDatabase    = (req.body.myDatabase)? req.body.myDatabase : null; 
 
-    // console.log(req)
-
-    // res.json({
-    //     status: 200,
-    //     message: projectId
-    //     // message: [projectId, machineName, publicIp, privateIp]
-    // })
-
     if(projectId && machineName && dutyId && privateIp) // && publicIp
     {
-        db.query(
-            "INSERT INTO lp_host (project_id, machine_name, duty_id, ip_type_id, public_ip, private_ip, port, remark, sql_type_id, username, password, my_database, create_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [projectId, machineName, dutyId, ipTypeId, publicIp, privateIp, service, remark, sqlTypeId, username, password, myDatabase, createDate],
-            (error, result) => {
-                if(error) {
-                    console.log(error);
-                }
-                else {
-                    res.json({
-                        status: 200,
-                        message: 'บันทึกข้อมูลเรียบร้อย'
-                    })
-                }
-            }
-         );
+        const data = {
+            project_id : projectId,
+            machine_name : machineName,
+            duty_id : dutyId,
+            ip_type_id : ipTypeId,
+            public_ip : publicIp,
+            private_ip : privateIp,
+            port : service,
+            remark : remark,
+
+            sql_type_id : sqlTypeId,
+            username : username,
+            password : password,
+            my_database : myDatabase,
+        }
+
+        const resultHostAdd = await HostAdd(data);
+        if(resultHostAdd)
+        {
+            res.json({
+                status: 200,
+                message: 'บันทึกข้อมูลเรียบร้อย'
+            })
+        }
+        else
+        {
+            res.json({
+                status: 400,
+                message: 'บันทึกข้อมูลไม่สำเร็จ!'
+            })
+        }
     }
     else
     {
         res.json({
             status: 400,
-            message: 'Data is null or empty!'
+            message: 'กรุณากรอกข้อมูลช่องที่บังคับ!'
         })
     }
 });
 
-app.put('/host/update', (req, res) => {
+app.get('/hostId/:id', async (req, res) => {
+
+    const id = req.params.id;
+
+    const resultHostDetail = await HostDetail(id);
+    if(resultHostDetail){
+        res.send(resultHostDetail);
+    }
+});
+
+app.put('/host/update', async (req, res) => {
 
     const id            = req.body.id;
     const projectId     = req.body.projectId;
@@ -1017,197 +1040,74 @@ app.put('/host/update', (req, res) => {
     const password      = (req.body.password)? req.body.password : null; 
     const myDatabase    = (req.body.myDatabase)? req.body.myDatabase : null; 
 
-    if(id !== '' && projectId !== '' && machineName !== '' && privateIp !== '') // && publicIp !== ''
+
+    if(id && projectId && machineName  && privateIp) // && publicIp
     {
-        db.query(
-            "UPDATE lp_host SET project_id = ?, machine_name = ?, duty_id = ?, ip_type_id = ?, public_ip = ?, private_ip = ?, port = ?, remark = ?, sql_type_id = ?, username = ?, password = ?, my_database = ?, update_date = ? WHERE id  = ?",
-            [projectId, machineName, dutyId, ipTypeId, publicIp, privateIp, service, remark, sqlTypeId, username, password, myDatabase, update_date, id],
-            (error, result) => {
-                if(error) {
-                    console.log(error);
-                }
-                else {
-                    res.json({
-                        status: 200,
-                        message: 'แก้ไขข้อมูลเรียบร้อย'
-                    })
-                }
-            }
-         );
+        const data = {
+            project_id : projectId,
+            machine_name : machineName,
+            duty_id : dutyId,
+            ip_type_id : ipTypeId,
+            public_ip : publicIp,
+            private_ip : privateIp,
+            port : service,
+            remark : remark,
+
+            sql_type_id : sqlTypeId,
+            username : username,
+            password : password,
+            my_database : myDatabase,
+        }
+
+        const resultHostUpdate = await HostUpdate(id, data);
+        if(resultHostUpdate)
+        {
+            res.json({
+                status: 200,
+                message: 'แก้ไขข้อมูลเรียบร้อย'
+            })
+        }
+        else
+        {
+            res.json({
+                status: 400,
+                message: 'แก้ไขข้อมูลไม่สำเร็จ!'
+            })
+        }
     }
     else
     {
         res.json({
             status: 400,
-            message: 'Data is null or empty!'
+            message: 'กรุณากรอกข้อมูลช่องที่บังคับ!'
         })
     }
+
 });
 
-app.delete('/host/delete/:id', (req, res) => {
+app.delete('/host/delete/:id', async (req, res) => {
     const id = req.params.id;
 
-    db.query(
-        "DELETE FROM lp_host WHERE id = ?", id, (err, result) =>
-        {
-            if(err)
-            {
-                console.log(err);
-            }
-            else
-            {
-                res.json({
-                    status: 200,
-                    message: 'ลบข้อมูลเรียบร้อย'
-                })
-            }
-        });
+    const resultHostDelete = await HostDelete(id);
+
+    if(resultHostDelete)
+    {
+        res.json({
+            status: 200,
+            message: 'ลบข้อมูลเรียบร้อย'
+        })
+    }
+    else
+    {
+        res.json({
+            status: 400,
+            message: 'ลบข้อมูลไม่สำเร็จ!'
+        })
+    }
 
 })
 
 // ======================== //
-
-/** === Host old === */
-app.get('/hostList', async (req, res) => {
-    // db.query('select * from lp_host', (err, rows) => {
-    //     if (err) {
-    //         console.log(err);
-    //     } else {
-    //         res.send(rows);
-    //     }
-    // });
-    let rows = '';
-    await getHostList().then((a) => {
-        rows = a;
-    });
-
-    console.log(rows);
-
-    // if(rows )
-    // {
-    //     res.json({
-    //         status: 200,
-    //         dataList: rows
-    //     })
-    // }
-    // else
-    // {
-    //     res.json({
-    //         status: 500,
-    //         message: 'ไม่พบข้อมูล'
-    //     })
-    // }
-});
-
-app.get('/hostId/:id', (req, res) => {
-
-    const id = req.params.id;
-
-    db.query("SELECT * FROM lp_host WHERE Id = ?", id, (err, row) => {
-        if (err) {
-            console.log(err);
-        } else {
-            res.send(row);
-        }
-    });
-});
-
-app.post('/add', (req, res) => {
-    const nameProject = req.body.nameProject;
-    const nameSystem = req.body.nameSystem;
-    const publicIp = req.body.publicIp;
-    const privateIp = req.body.privateIp;
-
-    // console.log(req)
-
-    // res.json({
-    //     status: 200,
-    //     message: nameProject
-    //     // message: [nameProject, nameSystem, publicIp, privateIp]
-    // })
-
-    if(nameProject !== '' && nameSystem !== '' && publicIp !== '' && privateIp !== '')
-    {
-        db.query(
-            "INSERT INTO lp_host (Name_project, machine_name, public_ip, private_ip) VALUES (?, ?, ?, ?)",
-            [nameProject, nameSystem, publicIp, privateIp],
-            (error, result) => {
-                if(error) {
-                    console.log(error);
-                }
-                else {
-                    res.json({
-                        status: 200,
-                        message: 'บันทึกข้อมูลเรียบร้อย'
-                    })
-                }
-            }
-         );
-    }
-    else
-    {
-        res.json({
-            status: 400,
-            message: 'Data is null or empty!'
-        })
-    }
-});
-
-app.put('/update', (req, res) => {
-
-    const id = req.body.id;
-    const nameProject = req.body.nameProject;
-    const nameSystem = req.body.nameSystem;
-    const publicIp = req.body.publicIp;
-    const privateIp = req.body.privateIp;
-
-    if(id !== '' && nameProject !== '' && nameSystem !== '' && publicIp !== '' && privateIp !== '')
-    {
-        db.query(
-            "UPDATE lp_host SET Name_project = ?, machine_name = ?, public_ip = ?, private_ip = ? WHERE id  = ?",
-            [nameProject, nameSystem, publicIp, privateIp, id],
-            (error, result) => {
-                if(error) {
-                    console.log(error);
-                }
-                else {
-                    res.json({
-                        status: 200,
-                        message: 'แก้ไขข้อมูลเรียบร้อย'
-                    })
-                }
-            }
-         );
-    }
-    else
-    {
-        res.json({
-            status: 400,
-            message: 'Data is null or empty!'
-        })
-    }
-});
-
-app.delete('/delete/:id', (req, res) => {
-    const id = req.params.id;
-
-    db.query(
-        "DELETE FROM lp_host WHERE Id = ?", id, (err, result) =>
-        {
-            if(err)
-            {
-                console.log(err);
-            }
-            else
-            {
-                res.json({
-                    status: 200,
-                    message: 'ลบข้อมูลเรียบร้อย'
-                })
-            }
-        });
-
-})
 
 /** Function */
 async function getHostList() {
@@ -1382,102 +1282,102 @@ async function updateStatusSendLineNotify(hostDetail, status, lineNotify = false
     }
     // console.log(is_status)
 
-    await qb.update('lp_host', {'is_status': is_status, 'status': status}, {id: hostDetail.id});
+    const resultUpdate =  await qb.update('lp_host', {'is_status': is_status, 'status': status}, {id: hostDetail.id});
+
+    // console.log(resultUpdate)
 
     /**=== add host history ===*/
-    const resultHostDetail = await HostDetail(hostDetail.id);
-    if(resultHostDetail){
-        await AddHostHistory(resultHostDetail);
-    }
-    
-    if( lineNotify === true)
+    if(resultUpdate)
     {
-        try {
-            const response = await qb.select('*')
-                .where({id : hostDetail.project_id})
-                .get('lp_project');
-    
-                // console.log("Query Ran: " + qb.last_query());
-                // console.log("Results:", response);
-    
-                if(response)
+        const resultHostDetail = await HostDetail(hostDetail.id);
+        if(resultHostDetail){
+            const resultHostHistoryAdd =  await HostHistoryAdd(resultHostDetail);
+
+            if(resultHostHistoryAdd)
+            {
+
+                if( lineNotify === true)
                 {
-                    /** start line  notify */
-                    const url_line_notification = "https://notify-api.line.me/api/notify";
+                    const resultProjectDetail = await ProjectDetail(hostDetail.project_id)
 
-                    var title_duty = '';
-                    if(hostDetail.duty_id === 1)
+                    if(resultProjectDetail)
                     {
-                        title_duty = "Web";
-                    }
-                    else if(hostDetail.duty_id === 2)
-                    {
-                        title_duty = "API";
-                    }
-                    else if(hostDetail.duty_id === 3)
-                    {
-                        title_duty = "Database";
-                    }
-
-                    var title_ip_type = '';
-                    var title_public_ip_use  = hostDetail.public_ip ? hostDetail.public_ip : '';
-                    var title_private_ip_use  = hostDetail.private_ip;
-                    if(hostDetail.ip_type_id === 1)
-                    {
-                        title_ip_type = "Public IP";
-                        title_public_ip_use = '`' + hostDetail.public_ip + '`';
-                    }
-                    else if(hostDetail.ip_type_id === 2)
-                    {
-                        title_ip_type = "Private IP";
-                        title_private_ip_use = '`' + hostDetail.private_ip + '`';
-                    }
-
-                    /** เขียน message */
-                    const message = '*ชื่อโครงการ :* ' + response[0].name + 
-                        '\n *ชื่อเครื่อง :* ' + hostDetail.machine_name + 
-                        '\n *หน้าที่ :* ' + title_duty + 
-                        // '\n *ตรวจสอบโดยใช้ :* ' + title_ip_type + 
-                        '\n *Public IP :* ' + title_public_ip_use + 
-                        '\n *Private IP :* ' + title_private_ip_use +
-                        '\n *สถานะ :* `Down(' + status + ')`';
-
-                    if(response[0].token_line_notify)
-                    {
-                        request({
-                            method: 'POST',
-                            uri: url_line_notification,
-                            header: {
-                                'Content-Type': 'multipart/form-data',
-                            },
-                            auth: {
-                                bearer: response[0].token_line_notify,
-                                // bearer: 'Fr48xE3Sld2ibeFboVF083GNPm38FUT0vZgnCk5Vvi2',
-                            },
-                            form: {
-                                message: message
-                            },
-                        }, (err, httpResponse, body) => {
-                            if (err) {
-                                console.log(err)
-                            } else {
-                                // console.log(body)
-                                // res.json({
-                                //     // httpResponse: httpResponse,
-                                //     body: body
-                                // });
+                        //  console.log(resultProjectDetail);
+                        
+                         /** start line  notify */
+                         const url_line_notification = "https://notify-api.line.me/api/notify";
+            
+                         var title_duty = '';
+                         if(hostDetail.duty_id === 1)
+                         {
+                             title_duty = "Web";
+                         }
+                         else if(hostDetail.duty_id === 2)
+                         {
+                             title_duty = "API";
+                         }
+                         else if(hostDetail.duty_id === 3)
+                         {
+                             title_duty = "Database";
+                         }
+     
+                         var title_ip_type = '';
+                         var title_public_ip_use  = hostDetail.public_ip ? hostDetail.public_ip : '';
+                         var title_private_ip_use  = hostDetail.private_ip;
+                         if(hostDetail.ip_type_id === 1)
+                         {
+                             title_ip_type = "Public IP";
+                             title_public_ip_use = '`' + hostDetail.public_ip + '`';
+                         }
+                         else if(hostDetail.ip_type_id === 2)
+                         {
+                             title_ip_type = "Private IP";
+                             title_private_ip_use = '`' + hostDetail.private_ip + '`';
+                         }
+     
+                        /** เขียน message */
+                        const message = '*ชื่อโครงการ :* ' + resultProjectDetail.name + 
+                            '\n *ชื่อเครื่อง :* ' + hostDetail.machine_name + 
+                            '\n *หน้าที่ :* ' + title_duty + 
+                            // '\n *ตรวจสอบโดยใช้ :* ' + title_ip_type + 
+                            '\n *Public IP :* ' + title_public_ip_use + 
+                            '\n *Private IP :* ' + title_private_ip_use +
+                            '\n *สถานะ :* `Down(' + status + ')`';
     
-                                // res.send(body)
-                            }
-                        });
+                        if(resultProjectDetail.token_line_notify)
+                        {
+                            request({
+                                method: 'POST',
+                                uri: url_line_notification,
+                                header: {
+                                    'Content-Type': 'multipart/form-data',
+                                },
+                                auth: {
+                                    bearer: resultProjectDetail.token_line_notify,
+                                    // bearer: 'Fr48xE3Sld2ibeFboVF083GNPm38FUT0vZgnCk5Vvi2',
+                                },
+                                form: {
+                                    message: message
+                                },
+                            }, (err, httpResponse, body) => {
+                                if (err) {
+                                    console.log(err)
+                                } else {
+                                    // console.log(body)
+                                    // res.json({
+                                    //     // httpResponse: httpResponse,
+                                    //     body: body
+                                    // });
+        
+                                    // res.send(body)
+                                }
+                            });
+                        }
+                        /** start line  notify */
                     }
-                    /** start line  notify */
                 }
-    
-        } catch (err) {
-            return console.error("Uh oh! Couldn't get results: " + err.msg);
-        } finally {
-            qb.release();
+
+            }
         }
     }
 }
@@ -1516,7 +1416,7 @@ async function checkHostInterval() {
         
                             if(totalHost === num)
                             {
-                                   console.log(1);
+                                //    console.log(1);
                                 /*=== updateProject ===*/
                                 await updateProject(projectDetail.id, {is_process : 0});
                             }
@@ -1584,7 +1484,7 @@ async function updateProject(id, setValue){
 // var minutes = 5, the_interval = minutes * 60 * 1000;
 // setInterval(function() {
 //     checkHostInterval();
-//     console.log("Test interval 1 minutes");
+//     console.log("Test interval 5 minutes");
 // }, the_interval);
 
 app.listen('3001', (req, res) => {
