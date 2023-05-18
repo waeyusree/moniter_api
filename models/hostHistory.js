@@ -1,7 +1,7 @@
 const Moment    = require('moment');
 const { pool } = require('../config/db');
 
-async function AddHostHistory(hostDetail) {
+async function HostHistoryAdd(hostDetail) {
 
      const data = {
         project_id  : hostDetail.project_id, 
@@ -24,7 +24,7 @@ async function AddHostHistory(hostDetail) {
     // console.error(data);
     // return;
 
-    let qb = await pool.get_connection();
+    const qb = await pool.get_connection();
 
     try {
         const results = await qb.insert('lp_host_history', data);
@@ -39,10 +39,10 @@ async function AddHostHistory(hostDetail) {
     } catch (err) {
         console.error(err);
     } finally {
-        if (qb) qb.release();
+        qb.release();
     }
 
     return false;
 }
 
-module.exports = { AddHostHistory };
+module.exports = { HostHistoryAdd };
