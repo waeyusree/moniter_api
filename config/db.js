@@ -1,52 +1,25 @@
-const mysql = require('mysql');
 const queryBuilder = require('node-querybuilder');
 
 require("dotenv").config();
 
 const {
-    HOSTNAME,
-    USERNAME,
-    PASSWORD,
-    DBNAME,
-    PORT
+    DB_HOSTNAME,
+    DB_USERNAME,
+    DB_PASSWORD,
+    DB_NAME,
+    DB_PORT
 } = process.env;
 
-// console.log(DBNAME)
-
-/** === start mysql === */
-// กำหนดการเชื่อมต่อฐานข้อมู
-const db = mysql.createConnection({
-    host: HOSTNAME,
-    user: USERNAME,
-    password: PASSWORD,
-    database: DBNAME,
-    // port: PORT
-});
-
-// ทำการเชื่อมต่อกับฐานข้อมูล 
-db.connect(function(err) {
-
-    if(err){ // กรณีเกิด error
-        // console.error('error: ' + err.message);
-        console.error('error connecting: ' + err.stack)
-        return
-    }
-
-    // console.log('Connected to the MySQL server.');
-    // console.log('connected as id ' + db.threadId)
-});
-
-// ปิดการเชื่อมต่อฐานข้อมูล MySQL ในที่นี้เราจะไม่ให้ทำงาน
-// db.end()
-/** === end mysql === */
+// console.log(DB_HOSTNAME)
+// console.log(DB_USERNAME)
 
 /** === start queryBuilder === */
 const settings = {
-    host: HOSTNAME,
-    user: USERNAME,
-    password: PASSWORD,
-    database: DBNAME,
-    // port: PORT,
+    host: DB_HOSTNAME,
+    user: DB_USERNAME,
+    password: DB_PASSWORD,
+    database: DB_NAME,
+    // port: DB_PORT,
     connectionLimit:100,
 };
 
@@ -55,4 +28,4 @@ const pool = new queryBuilder(settings, 'mysql', 'pool');
 // console.log(pool);
 /** === end queryBuilder === */
 
-module.exports = { db, pool };
+module.exports = { pool };
