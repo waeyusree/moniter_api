@@ -9,7 +9,7 @@ const jwt       = require("jsonwebtoken");
 
 const auth      = require("./middleware/auth");
 
-const { ProjectList, ProjectDetail }                      = require("./models/project");
+const { ProjectAdd, ProjectUpdate, ProjectDelete, ProjectList, ProjectDetail }             = require("./models/project");
 const { HostAdd, HostUpdate, HostDelete, HostList, HostDetail, GetHostListByProjectId }    = require("./models/host");
 const { HostHistoryAdd }                                  = require("./models/hostHistory");
 
@@ -19,7 +19,7 @@ const urlStatusCode = require('url-status-code')
 
 const mysql = require('mysql');
 const queryBuilder = require('node-querybuilder');
-const {db, pool} = require('./config/db');
+const {pool} = require('./config/db');
 
 const excelJS = require("exceljs");
 const { saveAs } = require("file-saver");
@@ -829,52 +829,45 @@ app.get('/export_host/:projectId', auth, async (req, res) => {
 });
 
 /** === Project new === */
-app.get('/projectList', auth, (req, res) => {
-    db.query('select * from lp_project', (err, rows) => {
-        if (err) {
-            console.log(err);
-        } else {
-            res.send(rows);
-        }
-    });
+app.get('/projectList', auth, async (req, res) => {
+
+    const resultProjectList = await ProjectList();
+    // console.log(resultProjectList)
+    if(resultProjectList){
+        res.send(resultProjectList);
+    }
+
 });
 
-app.get('/projectId/:id', (req, res) => {
-
-    const id = req.params.id;
-
-    db.query("SELECT * FROM lp_project WHERE id = ?", id, (err, row) => {
-        if (err) {
-            console.log(err);
-        } else {
-            res.send(row);
-        }
-    });
-});
-
-app.post('/project/add', (req, res) => {
+app.post('/project/add', async (req, res) => {
     const name = req.body.name;
-    const conJob = req.body.conJob;
+    const conJob = (req.body.conJob)? req.body.conJob : 0; 
     const tokenLineNotify = req.body.tokenLineNotify;
     const create_date = new Date();
 
-    if(name !== '' && tokenLineNotify !== '') // && conJob !== ''
+    if(name  && tokenLineNotify ) // && conJob 
     {
-        db.query(
-            "INSERT INTO lp_project (name, con_job, token_line_notify, create_date) VALUES (?, ?, ?, ?)",
-            [name, conJob, tokenLineNotify, create_date],
-            (error, result) => {
-                if(error) {
-                    console.log(error);
-                }
-                else {
-                    res.json({
-                        status: 200,
-                        message: 'บันทึกข้อมูลเรียบร้อย'
-                    })
-                }
-            }
-         );
+         const data = {
+            name : name,
+            con_job : conJob,
+            token_line_notify : tokenLineNotify,
+        }
+
+        const resultProjectAdd = await ProjectAdd(data);
+        if(resultProjectAdd)
+        {
+            res.json({
+                status: 200,
+                message: 'บันทึกข้อมูลเรียบร้อย'
+            })
+        }
+        else
+        {
+            res.json({
+                status: 400,
+                message: 'บันทึกข้อมูลไม่สำเร็จ!'
+            })
+        }
     }
     else
     {
@@ -885,31 +878,47 @@ app.post('/project/add', (req, res) => {
     }
 });
 
-app.put('/project/update', (req, res) => {
+app.get('/projectId/:id', async (req, res) => {
+
+    const id = req.params.id;
+
+    const resultProjectDetail = await ProjectDetail(id);
+    if(resultProjectDetail){
+        res.send(resultProjectDetail);
+    }
+
+});
+
+app.put('/project/update', async (req, res) => {
 
     const id = req.body.id;
     const name = req.body.name;
     const conJob = req.body.conJob;
     const tokenLineNotify = req.body.tokenLineNotify;
-    const update_date = new Date();
 
-    if(id !== '' && name !== ''  && tokenLineNotify !== '') // && conJob !== ''
+    if(id && name  && tokenLineNotify) // && conJob
     {
-        db.query(
-            "UPDATE lp_project SET name = ?, con_job = ?, token_line_notify = ?, update_date = ? WHERE id  = ?",
-            [name, conJob,  tokenLineNotify, update_date, id],
-            (error, result) => {
-                if(error) {
-                    console.log(error);
-                }
-                else {
-                    res.json({
-                        status: 200,
-                        message: 'แก้ไขข้อมูลเรียบร้อย'
-                    })
-                }
-            }
-         );
+         const data = {
+            name : name,
+            con_job : conJob,
+            token_line_notify : tokenLineNotify,
+        }
+
+        const resultProjectUpdate = await ProjectUpdate(id, data);
+        if(resultProjectUpdate)
+        {
+            res.json({
+                status: 200,
+                message: 'แก้ไขข้อมูลเรียบร้อย'
+            })
+        }
+        else
+        {
+            res.json({
+                status: 400,
+                message: 'แก้ไขข้อมูลไม่สำเร็จ!'
+            })
+        }
     }
     else
     {
@@ -920,36 +929,36 @@ app.put('/project/update', (req, res) => {
     }
 });
 
-app.delete('/project/delete/:id', (req, res) => {
+app.delete('/project/delete/:id', async (req, res) => {
     const id = req.params.id;
 
-    db.query(
-        "DELETE FROM lp_project WHERE Id = ?", id, (err, result) =>
-        {
-            if(err)
-            {
-                console.log(err);
-            }
-            else
-            {
-                res.json({
-                    status: 200,
-                    message: 'ลบข้อมูลเรียบร้อย'
-                })
-            }
-        });
+    const resultProjectDelete = await ProjectDelete(id);
+    if(resultProjectDelete)
+    {
+        res.json({
+            status: 200,
+            message: 'ลบข้อมูลเรียบร้อย'
+        })
+    }
+    else
+    {
+        res.json({
+            status: 400,
+            message: 'ลบข้อมูลไม่สำเร็จ!'
+        })
+    }
 
 })
 
-app.get('/project/detail/:id', (req, res) => {
+app.get('/project/detail/:id', async (req, res) => {
+  
     const id = req.params.id;
-    db.query('SELECT * FROM lp_host WHERE project_id = ?', id, (err, rows) => {
-        if (err) {
-            console.log(err);
-        } else {
-            res.send(rows);
-        }
-    });
+
+    const resultGetHostListByProjectId = await GetHostListByProjectId(id);
+    if(resultGetHostListByProjectId){
+        res.send(resultGetHostListByProjectId);
+    }
+
 });
 
 // === Host new === //
