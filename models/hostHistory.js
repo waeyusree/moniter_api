@@ -1,7 +1,8 @@
 const Moment    = require('moment');
-const { pool } = require('../config/db');
 
-async function HostHistoryAdd(hostDetail) {
+/** === Start manage data === **/
+
+async function HostHistoryAdd(qb, hostDetail) {
 
      const data = {
         project_id  : hostDetail.project_id, 
@@ -18,13 +19,14 @@ async function HostHistoryAdd(hostDetail) {
         username    : hostDetail.username,
         password    : hostDetail.password,
         my_database : hostDetail.my_database,
+        message_error : hostDetail.message_error,
         create_date : Moment(new Date()).format('YYYY-MM-DD HH:mm:ss')
     };
 
     // console.error(data);
     // return;
 
-    const qb = await pool.get_connection();
+    // const qb = await pool.get_connection();
 
     try {
         const results = await qb.insert('lp_host_history', data);
@@ -38,11 +40,17 @@ async function HostHistoryAdd(hostDetail) {
         }
     } catch (err) {
         console.error(err);
-    } finally {
-        qb.release();
     }
 
     return false;
 }
+
+/** === End manage data === **/
+
+/** ========================== */
+
+/** === Start look up data === **/
+
+/** === End look up data === **/
 
 module.exports = { HostHistoryAdd };
