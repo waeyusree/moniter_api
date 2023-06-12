@@ -20,7 +20,7 @@ const settings = {
     password: DB_PASSWORD,
     database: DB_NAME,
     // port: DB_PORT,
-    connectionLimit:100,
+    // connectionLimit:100,
 };
 
 const pool = new queryBuilder(settings, 'mysql', 'pool');

@@ -1,7 +1,8 @@
 const Moment    = require('moment');
 
 /** === Start manage data === **/
-async function ProjectAdd(qb, data){
+
+async function DutyAdd(qb, data){
 
     try {
 
@@ -10,7 +11,7 @@ async function ProjectAdd(qb, data){
             create_date : Moment(new Date()).format('YYYY-MM-DD HH:mm:ss')
         }, data);
 
-        const results = await qb.insert('lp_project', dataAssign);
+        const results = await qb.insert('lp_duty', dataAssign);
         if (results.affected_rows === 1) {
             return results.insert_id;
         } 
@@ -21,7 +22,7 @@ async function ProjectAdd(qb, data){
     return false;
 }
 
-async function ProjectUpdate(qb, projectId, data){
+async function DutyUpdate(qb, dutyId, data){
 
     try {
 
@@ -30,10 +31,10 @@ async function ProjectUpdate(qb, projectId, data){
             update_date : Moment(new Date()).format('YYYY-MM-DD HH:mm:ss')
         }, data);
 
-        const results = await qb.update('lp_project', dataAssign, {id : projectId});
+        const results = await qb.update('lp_duty', dataAssign, {id : dutyId});
 
         if (results.changed_rows === 1) {
-            return projectId;
+            return dutyId;
         } 
     } catch (err) {
         console.error(err);
@@ -42,31 +43,30 @@ async function ProjectUpdate(qb, projectId, data){
     return false;
 }
 
-async function ProjectDelete(qb, projectId){
+async function DutyDelete(qb, dutyId){
 
     try {
   
-        const results = await qb.delete('lp_project', {id: projectId});
+        const results = await qb.delete('lp_duty', {id: dutyId});
         if (results.affected_rows === 1) {
             return results.affected_rows ;
         }
     } catch (err) {
         console.error(err);
-    }
+    } 
     
     return false;
 }
-
 /** === End manage data === **/
 
 /** ========================== */
 
 /** === Start look up data === **/
-async function ProjectList(qb) {
+async function DutyList(qb) {
  
     try {
         const results = await qb.select('*')
-            .get('lp_project');
+            .get('lp_duty');
 
             // console.log("Query Ran: " + qb.last_query());
             // console.log("Results:", results);
@@ -84,16 +84,13 @@ async function ProjectList(qb) {
     return false;
 }
 
-async function ProjectDetail(qb, projectId) { 
+async function DutyDetail(qb, dutyId) {
+
     try {
         const results = await qb.select('*')
-            .where({id : projectId})
-            .get('lp_project');
-
-            // console.log("Query Ran: " + qb.last_query());
-            // console.log("Results:", results);
-            // return
-
+            .where({id : dutyId})
+            .get('lp_duty');
+            
             if(results)
             {
                 return results[0];
@@ -107,4 +104,4 @@ async function ProjectDetail(qb, projectId) {
 }
 /** === End look up data === **/
 
-module.exports = { ProjectAdd, ProjectUpdate, ProjectDelete, ProjectList, ProjectDetail };
+module.exports = { DutyAdd, DutyUpdate, DutyDelete, DutyList, DutyDetail };

@@ -1,11 +1,9 @@
 const Moment    = require('moment');
-const { pool } = require('../config/db');
 
 /** === Start manage data === **/
 
-async function HostAdd(data){
+async function HostAdd(qb, data){
 
-    const qb = await pool.get_connection();
     try {
 
         /*** === merge data === */
@@ -19,16 +17,13 @@ async function HostAdd(data){
         } 
     } catch (err) {
         console.error(err);
-    } finally {
-        qb.release();
-    }
+    } 
 
     return false;
 }
 
-async function HostUpdate(hostId, data){
+async function HostUpdate(qb, hostId, data){
 
-    const qb = await pool.get_connection();
     try {
 
         /*** === merge data === */
@@ -43,16 +38,13 @@ async function HostUpdate(hostId, data){
         } 
     } catch (err) {
         console.error(err);
-    } finally {
-        qb.release();
-    }
+    } 
 
     return false;
 }
 
-async function HostDelete(hostId){
+async function HostDelete(qb, hostId){
 
-    const qb = await pool.get_connection();
     try {
   
         const results = await qb.delete('lp_host', {id: hostId});
@@ -61,8 +53,6 @@ async function HostDelete(hostId){
         }
     } catch (err) {
         console.error(err);
-    } finally {
-        qb.release();
     }
     
     return false;
@@ -72,9 +62,8 @@ async function HostDelete(hostId){
 /** ========================== */
 
 /** === Start look up data === **/
-async function HostList() {
+async function HostList(qb) {
 
-    const qb = await pool.get_connection();
     try {
         const results = await qb.select('*')
             .get('lp_host');
@@ -90,16 +79,13 @@ async function HostList() {
 
     } catch (err) {
         return console.error("Uh oh! Couldn't get results: " + err.msg);
-    } finally {
-        qb.release();
-    }
-
+    } 
+    
     return false;
 }
 
-async function HostDetail(hostId) {
+async function HostDetail(qb, hostId) {
 
-    const qb = await pool.get_connection();
     try {
         const results = await qb.select('*')
             .where({id : hostId})
@@ -112,17 +98,12 @@ async function HostDetail(hostId) {
 
     } catch (err) {
         return console.error("Uh oh! Couldn't get results: " + err.msg);
-    } finally {
-        qb.release();
-    }
+    } 
 
     return false;
 }
 
-async function GetHostListByProjectId(projectId) {
-
-    // console.log(444)
-    const qb = await pool.get_connection();
+async function HostListByProjectId(qb, projectId) {
 
     try {
         const results = await qb.select('*')
@@ -146,12 +127,33 @@ async function GetHostListByProjectId(projectId) {
 
     } catch (err) {
         return console.error("Uh oh! Couldn't get results: " + err.msg);
-    } finally {
-        await qb.release();
+    }
+
+    return false;
+}
+
+
+async function HostHistoryCountUpDown(qb, hostId) {
+
+    try {
+        const sql = 'SELECT is_status, COUNT(`is_status`) AS `count_status` FROM `lp_host_history` WHERE ' + qb.escape({host_id: hostId}) + 'GROUP BY `is_status`';
+        // qb.query(sql, (err, res) => {
+        //     console.log(res);
+        // });
+
+        const results = await qb.query(sql);
+        if(results)
+        {
+            // console.log(results);
+            return results;
+        }
+
+    } catch (err) {
+        return console.error("Uh oh! Couldn't get results: " + err.msg);
     }
 
     return false;
 }
 /** === End look up data === **/
 
-module.exports = { HostAdd, HostUpdate, HostDelete, HostList, HostDetail, GetHostListByProjectId };
+module.exports = { HostAdd, HostUpdate, HostDelete, HostList, HostDetail, HostListByProjectId, HostHistoryCountUpDown };
