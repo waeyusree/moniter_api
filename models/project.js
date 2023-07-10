@@ -18,7 +18,7 @@ async function ProjectAdd(qb, data){
         console.error(err);
     }
 
-    return false;
+    return;
 }
 
 async function ProjectUpdate(qb, projectId, data){
@@ -39,7 +39,7 @@ async function ProjectUpdate(qb, projectId, data){
         console.error(err);
     } 
 
-    return false;
+    return;
 }
 
 async function ProjectDelete(qb, projectId){
@@ -54,7 +54,7 @@ async function ProjectDelete(qb, projectId){
         console.error(err);
     }
     
-    return false;
+    return;
 }
 
 /** === End manage data === **/
@@ -62,26 +62,56 @@ async function ProjectDelete(qb, projectId){
 /** ========================== */
 
 /** === Start look up data === **/
-async function ProjectList(qb) {
- 
+async function ProjectList(qb, condition = null) {
+
     try {
-        const results = await qb.select('*')
+        // const conditionWhere = Object.assign({}, condition);
+
+        // let sql_where = '';
+        // if(conditionWhere)
+        // {
+        //     sql_where = ' WHERE ' + qb.escape(conditionWhere);
+        // }
+
+        // const sql = 'SELECT * FROM `lp_project`' + sql_where + ' ORDER BY `id`';
+        // // qb.query(sql, (err, res) => {
+        // //     console.log(res);
+        // // });
+
+        // const results = await qb.query(sql);
+        // if(results)
+        // {
+        //     return results;
+        // }
+
+        let results = '';
+        if(condition)
+        {
+            results = await qb.select('*')
+            .where(condition)
+            // .where({
+            //     // is_active : 1, // เปิด
+            //     // is_active : 0, // ปิด
+            // })
+            // .limit(1)
             .get('lp_project');
+        }
+        else
+        {
+            results = await qb.select('*')
+            .get('lp_project');
+        }
 
-            // console.log("Query Ran: " + qb.last_query());
-            // console.log("Results:", results);
-            // return
-
-            if(results)
-            {
-                return results;
-            }
+        if(results)
+        {
+            return results;
+        }
 
     } catch (err) {
-        return console.error("Uh oh! Couldn't get results: " + err.msg);
+        return console.error("Uh oh! Couldn't get results : " + err.msg);
     }
 
-    return false;
+    return;
 }
 
 async function ProjectDetail(qb, projectId) { 
@@ -103,7 +133,7 @@ async function ProjectDetail(qb, projectId) {
         return console.error("Uh oh! Couldn't get results: " + err.msg);
     }
 
-    return false;
+    return;
 }
 /** === End look up data === **/
 

@@ -19,7 +19,7 @@ async function HostAdd(qb, data){
         console.error(err);
     } 
 
-    return false;
+    return;
 }
 
 async function HostUpdate(qb, hostId, data){
@@ -40,7 +40,7 @@ async function HostUpdate(qb, hostId, data){
         console.error(err);
     } 
 
-    return false;
+    return;
 }
 
 async function HostDelete(qb, hostId){
@@ -55,7 +55,7 @@ async function HostDelete(qb, hostId){
         console.error(err);
     }
     
-    return false;
+    return;
 }
 /** === End manage data === **/
 
@@ -81,7 +81,7 @@ async function HostList(qb) {
         return console.error("Uh oh! Couldn't get results: " + err.msg);
     } 
     
-    return false;
+    return;
 }
 
 async function HostDetail(qb, hostId) {
@@ -100,18 +100,29 @@ async function HostDetail(qb, hostId) {
         return console.error("Uh oh! Couldn't get results: " + err.msg);
     } 
 
-    return false;
+    return;
 }
 
-async function HostListByProjectId(qb, projectId) {
+async function HostListByProjectId(qb, projectId, data = null) {
 
+    const dataAssign = {
+        project_id : projectId,
+    }
+
+    /*** === merge data === */
+    if(data)
+    {
+        Object.assign(dataAssign, data);
+    }
+  
     try {
         const results = await qb.select('*')
-            .where({
-                project_id : projectId,
-                is_active : 1, // เปิด
-                // is_active : 0, // ปิด
-            })
+            .where(dataAssign)
+            // .where({
+            //     project_id : projectId,
+            //     // is_active : 1, // เปิด
+            //     // is_active : 0, // ปิด
+            // })
             // .limit(1)
             .get('lp_host');
 
@@ -129,7 +140,7 @@ async function HostListByProjectId(qb, projectId) {
         return console.error("Uh oh! Couldn't get results: " + err.msg);
     }
 
-    return false;
+    return;
 }
 
 
@@ -152,7 +163,7 @@ async function HostHistoryCountUpDown(qb, hostId) {
         return console.error("Uh oh! Couldn't get results: " + err.msg);
     }
 
-    return false;
+    return;
 }
 /** === End look up data === **/
 
