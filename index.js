@@ -45,18 +45,21 @@ const http          = require('http');
 const ping          = require('ping');
 const urlStatusCode = require('url-status-code')
 
+const Client        = require('ssh2-sftp-client');
+
 const mysql         = require('mysql');
 const { pool }      = require('./config/db');
 
 const excelJS       = require("exceljs");
 const { saveAs }    = require("file-saver");
 
+const cron          = require('node-cron');
+
 require("dotenv").config();
 
 let projectIdOld = '';
 let projectIdNew = '';
 let dataObj      = {};
-let numtest = 0;
 
 app.use(cors());
 app.use(express.json());
@@ -68,6 +71,7 @@ app.use(express.json());
 // app.set('views', 'views');
 // app.set('view options', { layout: false });
 
+/** === Login === */
 app.post("/register", async (req, res) => {
     // Our register logic starts here
     try {
@@ -194,7 +198,9 @@ app.post("/login", async (req, res) => {
 
     // qb.release();   /** === ปิด DB === */
 });
+/** === /Login === */
 
+/** === Test === */
 app.get('/', async (req, res) => {
     // res.render('index');
     // res.send('Hello World!')
@@ -308,7 +314,7 @@ app.get('/check_host_old', (req, res) => {
                     const host = hostDetail.public_ip 
         
                     const httpRequest =  http.get({host: host}, function(httpResponse){
-                        if( httpResponse.statusCode == 200 ||  httpResponse.statusCode == 302)
+                        if( httpResponse.statusCode == 200 || httpResponse.statusCode == 301 || httpResponse.statusCode == 302)
                         {
                             /** update status */
                             qb.update('lp_host', {'Status': httpResponse.statusCode}, {Id: hostDetail.Id});
@@ -663,617 +669,19 @@ app.get('/notify', (req, res) => {
 
 });
 
-// ======================== //
+app.get('/cronjob', (req, res) => {
 
-app.get('/check_host_interval', async (req, res) => {
-    let condition   = {};
-    // let projectList = '';
+    console.log('test get postman');
+    checkHostCronJob();
 
-    await getProjectList(condition)
-    .then( async (resProjectList) => {
-        if(resProjectList)
-        {
-            await resProjectList.forEach( async (projectDetail, key) => {
-                // console.log(projectDetail)
-        
-                /*=== updateProject ===*/
-                await updateProject(projectDetail.id, {is_process : 1});
-        
-                await getHostListById(projectDetail.id)
-                .then( async (resHostListById) => {
-        
-                    let totalHost = num = 0;
-                    if(resHostListById)
-                    {
-                        totalHost = resHostListById.length;
-                        await resHostListById.forEach( async (hostDetail, key) => {
-                            
-                            await processHost(hostDetail);
-        
-                            num = key+1;
-                            // console.log(totalHost + ' -> ' + num);
-        
-                            // console.log(typeof totalHost);
-                            // console.log(typeof num);
-        
-                            if(totalHost === num)
-                            {
-                                //    console.log(1);
-                                /*=== updateProject ===*/
-                                await updateProject(projectDetail.id, {is_process : 0});
-                            }
-                        });
-                    }
-                });
-            });
-        }
-
-        res.json({
-            status : 200,
-            data : resProjectList
-        })
-
+    res.status(200).send({
+        message: 'sucess'
     });
-
-    // return res.json({
-    //     status : 200,
-    //     data : projectList
-    // })
+    return;
 });
+/** === /Test === */
 
-app.get('/check_host/:projectId', auth, async (req, res) => {
-
-    const qb        = await pool.get_connection(); /** === Connection DB === */
-    const projectId = req.params.projectId;
- 
-    await HostListByProjectId(qb, projectId)
-    .then( async (resHostListById) => {
-
-        resHostListById.forEach( async (hostDetail, key) => {
-            await processHost(qb, hostDetail)
-            .then((resultProcessHost) => {
-                // console.log("resultProcessHost : " + resultProcessHost);
-                if(resultProcessHost)
-                {
-                    // console.log("resultProcessHost : " + (resultProcessHost.hostUp.num + resultProcessHost.hostDown.num));
-
-                    if(resHostListById.length === (resultProcessHost.hostUp.num + resultProcessHost.hostDown.num))
-                    {
-                        /**=== reset dataObj ===*/
-                        projectIdOld = '';
-                        projectIdNew = '';
-                        dataObj = {
-                            'tokenLineNotify' : '',
-                            'hostUp' : {
-                                'num'       : 0,
-                                'dataList'  : []
-                            },
-                            'hostDown': {
-                                'num'       : 0,
-                                'dataList'  : []
-                            }
-                        }
-
-                        //  console.log(" Ok : " + resHostListById.length + " = " + (resultProcessHost.hostUp.num + resultProcessHost.hostDown.num));
-
-                        if(resultProcessHost.tokenLineNotify && resultProcessHost.hostDown.num > 0)
-                        {
-                            const aaa = [];
-                            /** start line  notify */
-                            const url_line_notification = "https://notify-api.line.me/api/notify";
-                            const hostDownList          = resultProcessHost.hostDown.dataList;
-                            // let message = '';
-                            // message += 'เครื่องที่ Down ตอนนี้ ' + resultProcessHost.hostDown.num + ' เครื่อง';
-
-                            const n = 5; //tweak this to add more items per line
-
-                            const resultSplice = new Array(Math.ceil(hostDownList.length / n))
-                            .fill()
-                            .map(_ => hostDownList.splice(0, n));
-                            // console.log(resultSplice);
-
-                            let message = '';
-                            let num1    = 0;
-
-                            let message2 = '';
-                            let num2     = 0;
-
-                            const dateNow = Moment(new Date()).format('YYYY/MM/DD HH:mm:ss');
-
-                            resultSplice.forEach((value1, key1) => {
-
-                                message  = '';
-                                message += 'โครงการ : ' + resultProcessHost.projectName;
-
-                                num1 = (key1+1);
-
-                                let page = '( หน้า ' + num1 + ' )';
-                                let ms_host_down = '\n\n เครื่องที่ Down ตอนนี้ ' + resultProcessHost.hostDown.num + ' เครื่อง';
-
-                                if(num1 > 1)
-                                {
-                                    ms_host_down = '';
-                                    page = '( ต่อหน้า ' + num1 + ' )';
-                                }
-
-                                message += ms_host_down;
-                            
-                                // console.log("page : " + page);
-                                // console.log("hostDown num : " + resultProcessHost.hostDown.num);
-
-                                message2 = '';
-                                num2     = 0;
-                                value1.forEach((value2, key2) => {
-
-                                    // console.log("message : " + value2.message);
-                                    message2 += ' \n ' + value2.message;
-                                    num2 = (key2+1);
-                                });
-
-                                message += message2;
-                                message += '\n\n' + dateNow + ' ' + page;
-
-                                if(value1.length === num2)
-                                {
-
-                                    aaa.push({
-                                        'page': page, 
-                                        'messageLast' : message
-                                    });
-
-                                    // request({
-                                    //     method: 'POST',
-                                    //     uri: url_line_notification,
-                                    //     header: {
-                                    //         'Content-Type': 'multipart/form-data',
-                                    //     },
-                                    //     auth: {
-                                    //         bearer: resultProcessHost.tokenLineNotify,
-                                    //         // bearer: 'Fr48xE3Sld2ibeFboVF083GNPm38FUT0vZgnCk5Vvi2',
-                                    //     },
-                                    //     form: {
-                                    //         message: message
-                                    //     },
-                                    // }, (err, httpResponse, body) => {
-                                    //     if (err) {
-                                    //         console.log(err)
-                                    //     } else {
-        
-                                    //         console.log('num1 : ' + resultSplice.length + ' = ' + num1)
-                                    //         if(resultSplice.length === num1)
-                                    //         {
-                                    //             res.json({
-                                    //                 status : 200, 
-                                    //             })
-                                    //             return;
-                                    //         }
-                                            
-                                    //         // console.log(body)
-                                    //         // res.json({
-                                    //         //     // httpResponse: httpResponse,
-                                    //         //     body: body
-                                    //         // });
-                
-                                    //         // res.send(body)
-                                    //     }
-                                    // });
-                                }
-                                
-                            });
-
-                            let aaaNum = 0;
-                            if(aaa.length > 0)
-                            {
-                                aaa.forEach((aaaValue, aaaKey) => {
-
-                                    aaaNum = (aaaKey+1);
-                                    request({
-                                        method: 'POST',
-                                        uri: url_line_notification,
-                                        header: {
-                                            'Content-Type': 'multipart/form-data',
-                                        },
-                                        auth: {
-                                            bearer: resultProcessHost.tokenLineNotify,
-                                            // bearer: 'Fr48xE3Sld2ibeFboVF083GNPm38FUT0vZgnCk5Vvi2',
-                                        },
-                                        form: {
-                                            message: aaaValue.messageLast
-                                        },
-                                    }, (err, httpResponse, body) => {
-                                        if (err) {
-                                            console.log(err)
-                                        } else {
-        
-                                            // if(aaa.length === aaaNum)
-                                            // {
-                                            //     // console.log('numtest : ' + numtest);
-                                            //     res.json({
-                                            //         status : 200, 
-                                            //     })
-                                            //     return;
-                                            // }
-                                            
-                                            // console.log(body)
-                                            // res.json({
-                                            //     // httpResponse: httpResponse,
-                                            //     body: body
-                                            // });
-                
-                                            // res.send(body)
-                                        }
-                                    });
-                                })
-                            }
-
-                            if(aaa.length === aaaNum)
-                            {
-                                // console.log('numtest : ' + numtest);
-                                res.json({
-                                    status : 200, 
-                                })
-                                return;
-                            }
-
-                            
-                            /** start line  notify */
-
-                        }
-                    }
-                }
-            });
-        });
-
-        
-
-        // var i = 0;
-        // while (i < resHostListById.length) {
-
-        //     await processHost(qb, resHostListById[i])
-        //     .then((resultProcessHost) => {
-        //         console.log("resultProcessHost : " + resultProcessHost);
-        //         if(resultProcessHost)
-        //         {
-        //             console.log("resultProcessHost : " + (resultProcessHost.hostUp.num + resultProcessHost.hostDown.num));
-
-        //             if(resHostListById.length === (resultProcessHost.hostUp.num + resultProcessHost.hostDown.num))
-        //             {
-        //                 /**=== reset dataObj ===*/
-        //                 projectIdOld = '';
-        //                 projectIdNew = '';
-        //                 dataObj      = {}
-        //                 // dataObj = {
-        //                 //     'tokenLineNotify' : '',
-        //                 //     'hostUp' : {
-        //                 //         'num'       : 0,
-        //                 //         'dataList'  : []
-        //                 //     },
-        //                 //     'hostDown': {
-        //                 //         'num'       : 0,
-        //                 //         'dataList'  : []
-        //                 //     }
-        //                 // }
-
-        //                  console.log(" Ok : " + resHostListById.length + " = " + (resultProcessHost.hostUp.num + resultProcessHost.hostDown.num));
-        //                 // console.log("hostUp num : " + resultProcessHost.hostUp.num);
-        //                 // console.log("hostUp dataList : " + resultProcessHost.hostUp.dataList);
-        //                 // console.log("hostDown num : " + resultProcessHost.hostDown.num);
-        //                 // console.log("hostDown dataList : " + resultProcessHost.hostDown.dataList);
-
-        //                 if(resultProcessHost.tokenLineNotify && resultProcessHost.hostDown.num > 0)
-        //                 {
-        //                     const aaa = [];
-        //                     /** start line  notify */
-        //                     const url_line_notification = "https://notify-api.line.me/api/notify";
-        //                     const hostDownList          = resultProcessHost.hostDown.dataList;
-        //                     // let message = '';
-        //                     // message += 'เครื่องที่ Down ตอนนี้ ' + resultProcessHost.hostDown.num + ' เครื่อง';
-
-        //                     const n = 5; //tweak this to add more items per line
-
-        //                     const resultSplice = new Array(Math.ceil(hostDownList.length / n))
-        //                     .fill()
-        //                     .map(_ => hostDownList.splice(0, n));
-        //                     // console.log(resultSplice);
-
-        //                     let message = '';
-        //                     let num1    = 0;
-
-        //                     let message2 = '';
-        //                     let num2     = 0;
-
-        //                     const dateNow = Moment(new Date()).format('YYYY/MM/DD HH:mm:ss');
-
-        //                     resultSplice.forEach((value1, key1) => {
-
-        //                         message  = '';
-        //                         message += 'โครงการ : ' + resultProcessHost.projectName;
-
-        //                         num1 = (key1+1);
-        //                         let page = '( หน้า ' + num1 + ' )';
-        //                         if(num1 > 1)
-        //                         {
-        //                             page = '( ต่อหน้า ' + num1 + ' )';
-        //                         }
-                                
-        //                         // console.log("resultSplice Length : " + resultSplice.length);
-        //                         console.log("page : " + page);
-        //                         // console.log("value : " + value1[key1]);
-
-        //                         message2 = '';
-        //                         num2     = 0;
-        //                         value1.forEach((value2, key2) => {
-
-        //                             // console.log("message : " + value2.message);
-        //                             message2 += ' \n ' + value2.message;
-        //                             num2 = (key2+1);
-        //                         });
-
-        //                         message += message2;
-        //                         message += '\n\n' + dateNow + ' ' + page;
-
-        //                         if(value1.length === num2)
-        //                         {
-
-        //                             aaa.push({
-        //                                 'page': page, 
-        //                                 'messageLast' : message
-        //                             });
-
-        //                             // request({
-        //                             //     method: 'POST',
-        //                             //     uri: url_line_notification,
-        //                             //     header: {
-        //                             //         'Content-Type': 'multipart/form-data',
-        //                             //     },
-        //                             //     auth: {
-        //                             //         bearer: resultProcessHost.tokenLineNotify,
-        //                             //         // bearer: 'Fr48xE3Sld2ibeFboVF083GNPm38FUT0vZgnCk5Vvi2',
-        //                             //     },
-        //                             //     form: {
-        //                             //         message: message
-        //                             //     },
-        //                             // }, (err, httpResponse, body) => {
-        //                             //     if (err) {
-        //                             //         console.log(err)
-        //                             //     } else {
-        
-        //                             //         console.log('num1 : ' + resultSplice.length + ' = ' + num1)
-        //                             //         if(resultSplice.length === num1)
-        //                             //         {
-        //                             //             res.json({
-        //                             //                 status : 200, 
-        //                             //             })
-        //                             //             return;
-        //                             //         }
-                                            
-        //                             //         // console.log(body)
-        //                             //         // res.json({
-        //                             //         //     // httpResponse: httpResponse,
-        //                             //         //     body: body
-        //                             //         // });
-                
-        //                             //         // res.send(body)
-        //                             //     }
-        //                             // });
-        //                         }
-                                
-        //                     });
-
-        //                     let aaaNum = 0;
-        //                     if(aaa.length > 0)
-        //                     {
-        //                         aaa.forEach((aaaValue, aaaKey) => {
-
-        //                             aaaNum = (aaaKey+1);
-        //                               request({
-        //                                 method: 'POST',
-        //                                 uri: url_line_notification,
-        //                                 header: {
-        //                                     'Content-Type': 'multipart/form-data',
-        //                                 },
-        //                                 auth: {
-        //                                     bearer: resultProcessHost.tokenLineNotify,
-        //                                     // bearer: 'Fr48xE3Sld2ibeFboVF083GNPm38FUT0vZgnCk5Vvi2',
-        //                                 },
-        //                                 form: {
-        //                                     message: aaaValue.messageLast
-        //                                 },
-        //                             }, (err, httpResponse, body) => {
-        //                                 if (err) {
-        //                                     console.log(err)
-        //                                 } else {
-        
-        //                                     if(aaa.length === aaaNum)
-        //                                     {
-        //                                         res.json({
-        //                                             status : 200, 
-        //                                         })
-        //                                         return;
-        //                                     }
-                                            
-        //                                     // console.log(body)
-        //                                     // res.json({
-        //                                     //     // httpResponse: httpResponse,
-        //                                     //     body: body
-        //                                     // });
-                
-        //                                     // res.send(body)
-        //                                 }
-        //                             });
-        //                         })
-        //                     }
-
-        //                     // hostDownList.forEach((value, key)=> {
-        //                     //     // console.log( "hostDownList length" + hostDownList.length + " = " + (key+1))
-        //                     //     // console.log( "hostDownList message" + value.message)
-
-        //                     //     message += ' \n ' + value.message;
-
-        //                     //     if(hostDownList.length === (key+1) )
-        //                     //     {
-        //                     //              console.log( message.length)
-
-        //                     //         request({
-        //                     //             method: 'POST',
-        //                     //             uri: url_line_notification,
-        //                     //             header: {
-        //                     //                 'Content-Type': 'multipart/form-data',
-        //                     //             },
-        //                     //             auth: {
-        //                     //                 bearer: resultProcessHost.tokenLineNotify,
-        //                     //                 // bearer: 'Fr48xE3Sld2ibeFboVF083GNPm38FUT0vZgnCk5Vvi2',
-        //                     //             },
-        //                     //             form: {
-        //                     //                 message: message
-        //                     //             },
-        //                     //         }, (err, httpResponse, body) => {
-        //                     //             if (err) {
-        //                     //                 console.log(err)
-        //                     //             } else {
-        
-        //                     //                 res.json({
-        //                     //                     status : 200, 
-        //                     //                 })
-        //                     //                 return;
-                                            
-        //                     //                 // console.log(body)
-        //                     //                 // res.json({
-        //                     //                 //     // httpResponse: httpResponse,
-        //                     //                 //     body: body
-        //                     //                 // });
-                
-        //                     //                 // res.send(body)
-        //                     //             }
-        //                     //         });
-        //                     //     }
-        //                     // });
-        //                     /** start line  notify */
-
-        //                 }
-        //             }
-
-        //             i++;
-        //         }
-
-        //     });
-        // }
-          
-
-    }) 
-});
-
-app.get('/export_host/:projectId', auth, async (req, res) => {
-
-    const qb        = await pool.get_connection(); /** === Connection DB === */
-    const projectId = req.params.projectId;
-
-    await HostListByProjectId(qb, projectId)
-    .then( async (resHostListById) => {
-
-        let resultDutyList              = await DutyList(qb);
-        let resultDutyListObjIdToName   = resultDutyList.reduce((a, v) => ({ ...a, [v.id]: v.duty_name}), {}) ;
-
-        const workbook = new excelJS.Workbook();  // Create a new workbook
-        const worksheet = workbook.addWorksheet("My Users"); // New Worksheet
-        const path = __dirname + "/files";  // Path to download excel
-        // Column for data in excel. key must match data key
-
-        // worksheet.getCell(`A1`).value = "ชื่อโครงการ : ระบบ Local Government (Test )"; // Assign title to cell A1 -- THIS IS WHAT YOU'RE LOOKING FOR.
-        // worksheet.mergeCells('A1:I1'); // Extend cell over all column headers
-        // worksheet.getCell(`A1`).alignment = { horizontal: 'center' }; // Horizontally center your text
-
-        worksheet.columns = [
-            { header: "ลำดับ", key: "no", width: 10 }, 
-            { header: "ชื่อเครื่อง", key: "machine_name", width: 50 },
-            { header: "หน้าที่", key: "duty_title", width: 10 },
-            { header: "Public IP", key: "public_ip", width: 30 },
-            { header: "Private IP", key: "private_ip", width: 30 },
-            { header: "Port", key: "port", width: 10 },
-            { header: "สถานะ", key: "status_title", width: 10 },
-            { header: "หมายเหตุ", key: "remark", width: 30 },
-            { header: "วันที่อัพเดทล่าสุด", key: "update_date", width: 20 },
-        ];
-
-        resHostListById.forEach( async (hostDetail, key) => {
-            hostDetail.no = key+1;
-
-            /** === start duty === */
-            hostDetail.duty_title = '';
-            if(hostDetail.duty_id)
-            {
-                hostDetail.duty_title = resultDutyListObjIdToName[hostDetail.duty_id];
-            }
-            /** === end duty === */
-
-            /** === start ip_type === */
-            if(hostDetail.ip_type_id === 1 && hostDetail.public_ip)
-            {
-                hostDetail.public_ip = hostDetail.public_ip + " (ใช้ในการตรวจสอบ)";
-            }
-
-            if(hostDetail.ip_type_id === 2 && hostDetail.private_ip)
-            {
-                hostDetail.private_ip = hostDetail.private_ip + " (ใช้ในการตรวจสอบ)";
-            }
-            /** === end ip_type === */
-
-            /** === start status === */
-            hostDetail.status_title = '';
-            if(hostDetail.is_status === '0')
-            {
-                hostDetail.status_title = "Down(" + hostDetail.status + ")";
-            }
-            if(hostDetail.is_status === '1')
-            {
-                hostDetail.status_title = "Up(" + hostDetail.status + ")";
-            }
-            /** === end status === */
-
-            worksheet.addRow(hostDetail); // Add data in worksheet
-
-        });
-
-        // Making first line in excel bold
-        worksheet.getRow(1).eachCell((cell) => {
-            cell.font = { bold: true };
-        });
-
-        try {
-            // workbook.xlsx.writeFile(`${path}/users.xlsx`)
-            // .then(() => {
-            //     res.json({
-            //         status: 200,
-            //         // message: "file successfully downloaded",
-            //         path: `${path}/users.xlsx`,
-            //     });
-            // });
-
-            // res is a Stream object
-            res.setHeader(
-                "Content-Type",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            );
-            res.setHeader(
-                "Content-Disposition",
-                "attachment; filename=" + "tutorials.xlsx"
-            );
-            
-            return workbook.xlsx.write(res).then(function () {
-                res.status(200).end();
-            });
-
-        } catch (err) {
-            res.json({
-                status: 400,
-                message: "Something went wrong",
-            });
-        }
-    });
-});
-
-/** === Duty new === */
-
+/** === Duty === */
 app.get('/dutyList', auth, async (req, res) => {
 
     const qb = await pool.get_connection(); /** === Connection DB === */
@@ -1286,9 +694,9 @@ app.get('/dutyList', auth, async (req, res) => {
 
     qb.release();   /** === ปิด DB === */
 });
+/** === /Duty === */
 
-/** === Project new === */
-
+/** === Project === */
 app.get('/projectList', auth, async (req, res) => {
 
     const qb = await pool.get_connection(); /** === Connection DB === */
@@ -1402,6 +810,46 @@ app.put('/project/update', async (req, res) => {
     qb.release();   /** === ปิด DB === */
 });
 
+app.put('/project/updateActive', async (req, res) => {
+
+    const qb = await pool.get_connection(); /** === Connection DB === */
+
+    const id           = req.body.id;
+    const isActive     = req.body.isActive;
+   
+    if(id && isActive)
+    {
+        const data = {
+            is_active : isActive,
+        }
+
+        const resultProjectUpdate = await ProjectUpdate(qb, id, data);
+        if(resultProjectUpdate)
+        {
+            res.json({
+                status: 200,
+                message: 'แก้ไขข้อมูลเรียบร้อย'
+            })
+        }
+        else
+        {
+            res.json({
+                status: 400,
+                message: 'แก้ไขข้อมูลไม่สำเร็จ!'
+            })
+        }
+    }
+    else
+    {
+        res.json({
+            status: 400,
+            message: 'กรุณากรอกข้อมูลช่องที่บังคับ!'
+        })
+    }
+
+    qb.release(); /** === ปิด DB === */
+})
+
 app.delete('/project/delete/:id', async (req, res) => {
 
     const qb = await pool.get_connection(); /** === Connection DB === */
@@ -1467,9 +915,9 @@ app.get('/project/detail/:id', auth, async (req, res) => {
     qb.release(); /** === ปิด DB === */
     return;
 });
+/** === /Project === */
 
-// === Host new === //
-
+// === Host === //
 app.post('/host/add', async (req, res) => {
 
     const qb = await pool.get_connection(); /** === Connection DB === */
@@ -1629,6 +1077,46 @@ app.put('/host/update', async (req, res) => {
     qb.release(); /** === ปิด DB === */
 });
 
+app.put('/host/updateActive', async (req, res) => {
+
+    const qb = await pool.get_connection(); /** === Connection DB === */
+
+    const id           = req.body.id;
+    const isActive     = req.body.isActive;
+   
+    if(id && isActive)
+    {
+        const data = {
+            is_active : isActive,
+        }
+
+        const resultHostUpdate = await HostUpdate(qb, id, data);
+        if(resultHostUpdate)
+        {
+            res.json({
+                status: 200,
+                message: 'แก้ไขข้อมูลเรียบร้อย'
+            })
+        }
+        else
+        {
+            res.json({
+                status: 400,
+                message: 'แก้ไขข้อมูลไม่สำเร็จ!'
+            })
+        }
+    }
+    else
+    {
+        res.json({
+            status: 400,
+            message: 'กรุณากรอกข้อมูลช่องที่บังคับ!'
+        })
+    }
+
+    qb.release(); /** === ปิด DB === */
+})
+
 app.delete('/host/delete/:id', async (req, res) => {
 
     const qb = await pool.get_connection(); /** === Connection DB === */
@@ -1702,44 +1190,334 @@ app.get('/host/history/:id', async (req, res) => {
     qb.release(); /** === ปิด DB === */
     return;
 })
+// === /Host === //
 
-// ======================== //
+// === api === //
+app.get('/check_host/:projectId', auth, async (req, res) => {
 
-/** Function */
+    const qb        = await pool.get_connection(); /** === Connection DB === */
+    const projectId = req.params.projectId;
+    const data      = {
+        is_active : '1', // เปิด
+    }
+ 
+    await HostListByProjectId(qb, projectId, data)
+    .then( async (resHostListByProjectId) => {
 
-async function getHostListById(projectId) {
+        resHostListByProjectId.forEach( async (hostDetail, key) => {
+            await processHost(qb, hostDetail)
+            .then((resultProcessHost) => {
+                // console.log("resultProcessHost : " + resultProcessHost);
+                if(resultProcessHost)
+                {
+                    // console.log("resultProcessHost : " + (resultProcessHost.hostUp.num + resultProcessHost.hostDown.num));
 
-    const qb = await pool.get_connection();
-    try {
-        const response = await qb.select('*')
-            .where({
-                project_id : projectId,
-                is_active : 1, // เปิด
-                // is_active : 0, // ปิด
-            })
-            // .limit(1)
-            .get('lp_host');
+                    if(resHostListByProjectId.length === (resultProcessHost.hostUp.num + resultProcessHost.hostDown.num))
+                    {
+                        /**=== reset dataObj ===*/
+                        projectIdOld = '';
+                        projectIdNew = '';
+                        dataObj = {
+                            'tokenLineNotify' : '',
+                            'hostUp' : {
+                                'num'       : 0,
+                                'dataList'  : []
+                            },
+                            'hostDown': {
+                                'num'       : 0,
+                                'dataList'  : []
+                            }
+                        }
 
-            // console.log("Query Ran: " + qb.last_query());
-            // console.log("Results:", response);
+                        //  console.log(" Ok : " + resHostListByProjectId.length + " = " + (resultProcessHost.hostUp.num + resultProcessHost.hostDown.num));
 
-            if(response)
+                        if(resultProcessHost.tokenLineNotify && resultProcessHost.hostDown.num > 0)
+                        {
+                            const messageSegment = [];
+                            /** start line  notify */
+                            const url_line_notification = "https://notify-api.line.me/api/notify";
+                            const hostDownList          = resultProcessHost.hostDown.dataList;
+                            // let message = '';
+                            // message += 'เครื่องที่ Down ตอนนี้ ' + resultProcessHost.hostDown.num + ' เครื่อง';
+
+                            const n = 4; //tweak this to add more items per line
+
+                            const resultSplice = new Array(Math.ceil(hostDownList.length / n))
+                            .fill()
+                            .map(_ => hostDownList.splice(0, n));
+                            // console.log(resultSplice);
+
+                            let message = '';
+                            let num1    = 0;
+
+                            let message2 = '';
+                            let num2     = 0;
+
+                            const dateNow = Moment(new Date()).format('YYYY/MM/DD HH:mm:ss');
+
+                            resultSplice.forEach((value1, key1) => {
+
+                                message  = '';
+                                num1 = (key1+1);
+
+                                let page = '( หน้า ' + num1 + ' )';
+                                let titleHostDown = '\n\n เครื่องที่ Down ตอนนี้ ' + resultProcessHost.hostDown.num + ' เครื่อง';
+
+                                if(num1 > 1)
+                                {
+                                    titleHostDown = '';
+                                    page = '( ต่อหน้า ' + num1 + ' )';
+                                }
+
+                                message += dateNow + ' ' + page;
+                                message += '\n\n โครงการ : ' + resultProcessHost.projectName;
+                                message += titleHostDown;
+                            
+                                // console.log("page : " + page);
+                                // console.log("hostDown num : " + resultProcessHost.hostDown.num);
+
+                                message2 = '';
+                                num2     = 0;
+                                value1.forEach((value2, key2) => {
+
+                                    // console.log("message : " + value2.message);
+                                    message2 += ' \n ' + value2.message;
+                                    num2 = (key2+1);
+                                });
+
+                                message += message2;
+                              
+                                if(value1.length === num2)
+                                {
+                                    messageSegment.push({
+                                        'page'        : page, 
+                                        'messageLast' : message
+                                    });
+                                }
+                                
+                            });
+
+                            let num3 = 0;
+                            if(messageSegment.length > 0)
+                            {
+                                // console.log(messageSegment[0]); return;
+
+                                // messageSegment.forEach((aaaValue, aaaKey) => {
+
+                                //     num3 = (aaaKey+1);
+                                //     request({
+                                //         method: 'POST',
+                                //         uri: url_line_notification,
+                                //         header: {
+                                //             'Content-Type': 'multipart/form-data',
+                                //         },
+                                //         auth: {
+                                //             bearer: resultProcessHost.tokenLineNotify,
+                                //             // bearer: 'Fr48xE3Sld2ibeFboVF083GNPm38FUT0vZgnCk5Vvi2',
+                                //         },
+                                //         form: {
+                                //             message: aaaValue.messageLast
+                                //         },
+                                //     }, (err, httpResponse, body) => {
+                                //         if (err) {
+                                //             console.log(err)
+                                //         } else {
+        
+                                //             // if(messageSegment.length === num3)
+                                //             // {
+                                //             //     res.json({
+                                //             //         status : 200, 
+                                //             //     })
+                                //             //     return;
+                                //             // }
+                                            
+                                //             // console.log(body)
+                                //             // res.json({
+                                //             //     // httpResponse: httpResponse,
+                                //             //     body: body
+                                //             // });
+                
+                                //             // res.send(body)
+                                //         }
+                                //     });
+
+                                // })
+
+                                for(let i = 0; i < messageSegment.length; i++)
+                                {
+                                    num3 = (i+1);
+                                    request({
+                                        method: 'POST',
+                                        uri: url_line_notification,
+                                        header: {
+                                            'Content-Type': 'multipart/form-data',
+                                        },
+                                        auth: {
+                                            bearer: resultProcessHost.tokenLineNotify,
+                                            // bearer: 'Fr48xE3Sld2ibeFboVF083GNPm38FUT0vZgnCk5Vvi2',
+                                        },
+                                        form: {
+                                            message: messageSegment[i].messageLast
+                                        },
+                                    }, (err, httpResponse, body) => {
+                                        if (err) {
+                                            console.log(err)
+                                        } else {
+
+                                            // if(messageSegment.length === num3)
+                                            // {
+                                            //     res.json({
+                                            //         status : 200, 
+                                            //     })
+                                            //     return;
+                                            // }
+                                            
+                                            // console.log(body)
+                                            // res.json({
+                                            //     // httpResponse: httpResponse,
+                                            //     body: body
+                                            // });
+                
+                                            // res.send(body)
+                                        }
+                                    });
+                                    
+                                }
+                            }
+
+                            if(messageSegment.length === num3)
+                            {
+                                res.json({
+                                    status : 200, 
+                                })
+                                return;
+                            }
+
+                            /** start line  notify */
+
+                        }
+                    }
+                }
+            });
+        });
+
+    }) 
+});
+
+app.get('/export_host/:projectId', auth, async (req, res) => {
+
+    const qb        = await pool.get_connection(); /** === Connection DB === */
+    const projectId = req.params.projectId;
+
+    await HostListByProjectId(qb, projectId)
+    .then( async (resHostListByProjectId) => {
+
+        let resultDutyList              = await DutyList(qb);
+        let resultDutyListObjIdToName   = resultDutyList.reduce((a, v) => ({ ...a, [v.id]: v.duty_name}), {}) ;
+
+        const workbook = new excelJS.Workbook();  // Create a new workbook
+        const worksheet = workbook.addWorksheet("My Users"); // New Worksheet
+        const path = __dirname + "/files";  // Path to download excel
+        // Column for data in excel. key must match data key
+
+        // worksheet.getCell(`A1`).value = "ชื่อโครงการ : ระบบ Local Government (Test )"; // Assign title to cell A1 -- THIS IS WHAT YOU'RE LOOKING FOR.
+        // worksheet.mergeCells('A1:I1'); // Extend cell over all column headers
+        // worksheet.getCell(`A1`).alignment = { horizontal: 'center' }; // Horizontally center your text
+
+        worksheet.columns = [
+            { header: "ลำดับ", key: "no", width: 10 }, 
+            { header: "ชื่อเครื่อง", key: "machine_name", width: 50 },
+            { header: "หน้าที่", key: "duty_title", width: 10 },
+            { header: "Public IP", key: "public_ip", width: 30 },
+            { header: "Private IP", key: "private_ip", width: 30 },
+            { header: "Port", key: "port", width: 10 },
+            { header: "สถานะ", key: "status_title", width: 10 },
+            { header: "หมายเหตุ", key: "remark", width: 30 },
+            { header: "วันที่อัพเดทล่าสุด", key: "update_date", width: 20 },
+        ];
+
+        resHostListByProjectId.forEach( async (hostDetail, key) => {
+            hostDetail.no = key+1;
+
+            /** === start duty === */
+            hostDetail.duty_title = '';
+            if(hostDetail.duty_id)
             {
-                return response;
+                hostDetail.duty_title = resultDutyListObjIdToName[hostDetail.duty_id];
+            }
+            /** === end duty === */
+
+            /** === start ip_type === */
+            if(hostDetail.ip_type_id === 1 && hostDetail.public_ip)
+            {
+                hostDetail.public_ip = hostDetail.public_ip + " (ใช้ในการตรวจสอบ)";
             }
 
-    } catch (err) {
-        return console.error("Uh oh! Couldn't get results: " + err.msg);
-    } finally {
-        qb.release();
-    }
-}
+            if(hostDetail.ip_type_id === 2 && hostDetail.private_ip)
+            {
+                hostDetail.private_ip = hostDetail.private_ip + " (ใช้ในการตรวจสอบ)";
+            }
+            /** === end ip_type === */
 
+            /** === start status === */
+            hostDetail.status_title = '';
+            if(hostDetail.is_status === '0')
+            {
+                hostDetail.status_title = "Down(" + hostDetail.status + ")";
+            }
+            if(hostDetail.is_status === '1')
+            {
+                hostDetail.status_title = "Up(" + hostDetail.status + ")";
+            }
+            /** === end status === */
+
+            worksheet.addRow(hostDetail); // Add data in worksheet
+
+        });
+
+        // Making first line in excel bold
+        worksheet.getRow(1).eachCell((cell) => {
+            cell.font = { bold: true };
+        });
+
+        try {
+            // workbook.xlsx.writeFile(`${path}/users.xlsx`)
+            // .then(() => {
+            //     res.json({
+            //         status: 200,
+            //         // message: "file successfully downloaded",
+            //         path: `${path}/users.xlsx`,
+            //     });
+            // });
+
+            // res is a Stream object
+            res.setHeader(
+                "Content-Type",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            );
+            res.setHeader(
+                "Content-Disposition",
+                "attachment; filename=" + "tutorials.xlsx"
+            );
+            
+            return workbook.xlsx.write(res).then(function () {
+                res.status(200).end();
+            });
+
+        } catch (err) {
+            res.json({
+                status: 400,
+                message: "Something went wrong",
+            });
+        }
+    });
+});
+// === /api === //
+
+/**=== Main function ===*/
 async function processHost(qb, hostDetail)
 {
     return new Promise( async (resolve, reject) => {
-
-        numtest = numtest + 1;
 
         let use_ip  = "";
         let resultUpdateStatusSendLineNotify = "";
@@ -1785,22 +1563,28 @@ async function processHost(qb, hostDetail)
                 const httpRequest =  await http.get(objHttp, async function(httpResponse){
                     // console.log('httpResponse : ' + httpResponse)
 
-                    if( httpResponse.statusCode == 200 ||  httpResponse.statusCode == 302)
-                    {
-                        /** === เรียกใช้ฟังก์ชัน === */
-                        resultUpdateStatusSendLineNotify = await updateStatusSendLineNotify(qb, hostDetail, httpResponse.statusCode, false);
-                        resolve(resultUpdateStatusSendLineNotify);
-                        return;
-                    }
-                    else
-                    {
-                        /** === เรียกใช้ฟังก์ชัน === */
-                        resultUpdateStatusSendLineNotify = await updateStatusSendLineNotify(qb, hostDetail, httpResponse.statusCode, true);
-                        resolve(resultUpdateStatusSendLineNotify);
-                        return;
-                    }
+                    /** ของใหม่ */
+                    resultUpdateStatusSendLineNotify = await updateStatusSendLineNotify(qb, hostDetail, httpResponse.statusCode, false);
+                    resolve(resultUpdateStatusSendLineNotify);
+                    return;
+
+                    /** ของเก่า */
+                    // if( httpResponse.statusCode == 200 ||  httpResponse.statusCode == 301 || httpResponse.statusCode == 302)
+                    // {
+                    //     /** === เรียกใช้ฟังก์ชัน === */
+                    //     resultUpdateStatusSendLineNotify = await updateStatusSendLineNotify(qb, hostDetail, httpResponse.statusCode, false);
+                    //     resolve(resultUpdateStatusSendLineNotify);
+                    //     return;
+                    // }
+                    // else
+                    // {
+                    //     /** === เรียกใช้ฟังก์ชัน === */
+                    //     resultUpdateStatusSendLineNotify = await updateStatusSendLineNotify(qb, hostDetail, httpResponse.statusCode, true);
+                    //     resolve(resultUpdateStatusSendLineNotify);
+                    //     return;
+                    // }
                 });
-    
+
                 /** === กรณี http error === */
                 httpRequest.on('error', async err => {
 
@@ -1811,8 +1595,19 @@ async function processHost(qb, hostDetail)
                     return;
                 });
                 /** === /กรณี http error === */
+
+                /** === กรณี http เชื่อมต่อเกินเวลาที่กำหนด 10 วินาที === */
+                // httpRequest.setTimeout( 10000, async function() {
+                   
+                //     /** === เรียกใช้ฟังก์ชัน === */
+                //     resultUpdateStatusSendLineNotify = await updateStatusSendLineNotify(qb, hostDetail, 500, true, "Connected beyond the allotted time 10s.");
+                //     resolve(resultUpdateStatusSendLineNotify);
+                //     return;
+                // });
+                /** === กรณี http เชื่อมต่อเกินเวลาที่กำหนด 10 วินาที === */
                 
             }
+            /** === /Web or API === */
     
             /** === Database === */
             if( hostDetail.duty_id && (
@@ -1864,6 +1659,46 @@ async function processHost(qb, hostDetail)
                     return;
                 }
             }
+            /** === /Database === */
+
+            /** === FTP/SFTP === */
+            if(hostDetail.duty_id && (
+                hostDetail.duty_id === resultDutyListObjNameToId['FTP'] || 
+                hostDetail.duty_id === resultDutyListObjNameToId['SFTP']
+            ))
+            {
+                const sftp  =   new Client();
+                sftp.connect({
+                    host: use_ip,
+                    port: hostDetail.port,
+                    username: hostDetail.username,
+                    password: hostDetail.password
+                    // host: '202.139.198.209',
+                    // port: '22',
+                    // username: 'dgadmin',
+                    // password: 'Gdcc@admin%$#@!'
+                    // password: 'admin@dga$#@!'
+                }).then(() => {
+                    return sftp.list('/var/');
+                }).then( async (data) => {
+                    // console.log('ptp sucess : ' + data);
+                    if(data.length > 0)
+                    {
+                        resultUpdateStatusSendLineNotify = await updateStatusSendLineNotify(qb, hostDetail, 200, false);
+                        resolve(resultUpdateStatusSendLineNotify);
+                        return;
+                    }
+                }).catch( async (err) => {
+                    // console.log('ptp error : ' + err.message);
+                    resultUpdateStatusSendLineNotify = await updateStatusSendLineNotify(qb, hostDetail, 500, true, err.message);
+                    resolve(resultUpdateStatusSendLineNotify);
+                    return;
+                });
+
+                // close the client connection
+                sftp.end();
+            }
+            /** === /FTP/SFTP === */
 
         }
 
@@ -1872,8 +1707,6 @@ async function processHost(qb, hostDetail)
 
 async function updateStatusSendLineNotify(qb, hostDetail, status, lineNotify = false, messageError = null){
    
-    // numtest = numtest + 1;
-
     projectIdNew = hostDetail.project_id;
 
     if(projectIdOld !== projectIdNew)
@@ -1896,11 +1729,21 @@ async function updateStatusSendLineNotify(qb, hostDetail, status, lineNotify = f
 
     /** update status */
     // console.log(typeof status)
-    let is_status = 0;
-    if(status === 200 || status === 302)
+
+    /** ของเก่า */
+    // let is_status = 0;
+    // if(status === 200 || status === 301 || status === 302)
+    // {
+    //     is_status = 1;
+    // }
+
+    /** ของใหม่ */
+    let is_status = 1;
+    if(status === 500)
     {
-        is_status = 1;
+        is_status = 0;
     }
+
     // console.log('host id : ' + hostDetail.id)
     // console.log('is_status : ' + is_status)
     // console.log('status : ' + status)
@@ -1936,18 +1779,20 @@ async function updateStatusSendLineNotify(qb, hostDetail, status, lineNotify = f
                             title_duty = resultDutyListObjIdToName[hostDetail.duty_id];
                         }
     
-                        var title_ip_type = '';
+                        var title_ip_type = ip_use = '';
                         var title_public_ip_use  = hostDetail.public_ip ? hostDetail.public_ip : '';
                         var title_private_ip_use  = hostDetail.private_ip;
                         if(hostDetail.ip_type_id === 1)
                         {
-                            title_ip_type = "Public IP";
-                            title_public_ip_use = '`' + hostDetail.public_ip + '`';
+                            title_ip_type       = "Public IP";
+                            ip_use              = hostDetail.public_ip;
+                            title_public_ip_use = hostDetail.public_ip;
                         }
                         else if(hostDetail.ip_type_id === 2)
                         {
-                            title_ip_type = "Private IP";
-                            title_private_ip_use = '`' + hostDetail.private_ip + '`';
+                            title_ip_type        = "Private IP";
+                            ip_use               = hostDetail.private_ip;
+                            title_private_ip_use = hostDetail.private_ip;
                         }
     
                         /** เขียน message */
@@ -1955,7 +1800,7 @@ async function updateStatusSendLineNotify(qb, hostDetail, status, lineNotify = f
                         // // '\n *ชื่อโครงการ :* ' + resultProjectDetail.name + 
                         // '\n *ชื่อเครื่อง :* ' + hostDetail.machine_name + 
                         // '\n *หน้าที่ :* ' + title_duty + 
-                        // // '\n *ตรวจสอบโดยใช้ :* ' + title_ip_type + 
+                        // // '\n *ตรวจสอบโดยหมายเลข :* ' + title_ip_type + 
                         // '\n *Public IP :* ' + title_public_ip_use + 
                         // '\n *Private IP :* ' + title_private_ip_use +
                         // '\n *สถานะ :* `Down(' + status + ')`';
@@ -1964,10 +1809,12 @@ async function updateStatusSendLineNotify(qb, hostDetail, status, lineNotify = f
                         // '\n ชื่อโครงการ : ' + resultProjectDetail.name + 
                         '\n ชื่อเครื่อง : ' + hostDetail.machine_name + 
                         '\n หน้าที่ : ' + title_duty + 
-                        // '\n ตรวจสอบโดยใช้ : ' + title_ip_type + 
-                        '\n Public IP : ' + title_public_ip_use + 
-                        '\n Private IP : ' + title_private_ip_use +
-                        '\n สถานะ : Down(' + status + ')';
+                        // '\n ตรวจสอบโดยหมายเลข : ' + title_ip_type + 
+                        // '\n Public IP : ' + title_public_ip_use + 
+                        // '\n Private IP : ' + title_private_ip_use +
+                        '\n ' + title_ip_type + ' : ' + ip_use +
+                        '\n สถานะ : Down(' + status + ')' +
+                        '\n Error : ' + messageError;
 
                         dataObj.projectName = resultProjectDetail.name;
                         if(resultProjectDetail.token_line_notify)
@@ -1993,116 +1840,241 @@ async function updateStatusSendLineNotify(qb, hostDetail, status, lineNotify = f
                         'message' : message
                     });
                 }
+
+                // console.log(dataObj.hostUp.num + dataObj.hostDown.num);
+                // console.log(hostDetail.id)
+                // console.log(messageError)
+                // console.log(dataObj)
+
+                return dataObj;
             }
         }
     }
 
-    return dataObj;
+    return;
 }
-/* ============== */
+/**=== /Main function ===*/
 
-async function checkHostInterval() {
-    let condition   = {};
+/**=== Cronjob function */
+async function checkHostCronJob() {
+    const qb        = await pool.get_connection();
+    const condition = {
+        is_active : '1',
+        is_process : '0'
+    };
 
-    await getProjectList(condition)
-    .then( async (resProjectList) => {
-        if(resProjectList)
+    const resultProjectList = await ProjectList(qb, condition);
+    if(resultProjectList){
+  
+        // resultProjectList.forEach( async (projectDetail, key) => {
+        //     const resultTest = await test(qb, projectDetail)
+        //     console.log(resultTest)
+        // });
+
+        // console.log(resultProjectList);
+        // return;
+
+        let i = 0;
+        while (i < resultProjectList.length) {
+          
+            let projectDetail = resultProjectList[i];
+
+            const resultTest = await loopCheckHostCronJob(qb, projectDetail)
+
+            if(resultTest)
+            {
+                // console.log(resultTest)
+                i++;
+            }
+            else
+            {
+                break;
+            }
+          
+        }
+    }
+}
+
+async function loopCheckHostCronJob(qb, projectDetail)
+{
+    return new Promise( async (resolve, reject) => {
+
+        /*=== updateProject ===*/
+        const resultProjectUpdate = await ProjectUpdate(qb, projectDetail.id, {is_process : 1});
+        if(resultProjectUpdate)
         {
-            await resProjectList.forEach( async (projectDetail, key) => {
-                // console.log(projectDetail)
-        
-                /*=== updateProject ===*/
-                await updateProject(projectDetail.id, {is_process : 1});
-        
-                await getHostListById(projectDetail.id)
-                .then( async (resHostListById) => {
-        
-                    let totalHost = num = 0;
-                    if(resHostListById)
-                    {
-                        totalHost = resHostListById.length;
-                        await resHostListById.forEach( async (hostDetail, key) => {
-                            
-                            await processHost(hostDetail);
-        
-                            num = key+1;
-                            // console.log(totalHost + ' -> ' + num);
-        
-                            // console.log(typeof totalHost);
-                            // console.log(typeof num);
-        
-                            if(totalHost === num)
+            const data      = {
+                is_active : '1', // เปิด
+            }
+
+            await HostListByProjectId(qb, projectDetail.id, data)
+            .then( (resHostListByProjectId) => {
+   
+                // let totalHost = numHost = 0;
+                if(resHostListByProjectId)
+                {
+                    // totalHost = resHostListByProjectId.length;
+                    resHostListByProjectId.forEach( async (hostDetail, key) => {
+   
+                        // numHost = key+1;
+   
+                        await processHost(qb, hostDetail)
+                        .then( async (resultProcessHost) => {
+                            // console.log("resultProcessHost : " + resultProcessHost);
+                            if(resultProcessHost)
                             {
-                                //    console.log(1);
-                                /*=== updateProject ===*/
-                                await updateProject(projectDetail.id, {is_process : 0});
+                                // console.log("resultProcessHost : " + (resultProcessHost.hostUp.num + resultProcessHost.hostDown.num));
+                                if(resHostListByProjectId.length === (resultProcessHost.hostUp.num + resultProcessHost.hostDown.num))
+                                {
+                                    /**=== reset dataObj ===*/
+                                    projectIdOld = '';
+                                    projectIdNew = '';
+                                    dataObj = {
+                                        'tokenLineNotify' : '',
+                                        'hostUp' : {
+                                            'num'       : 0,
+                                            'dataList'  : []
+                                        },
+                                        'hostDown': {
+                                            'num'       : 0,
+                                            'dataList'  : []
+                                        }
+                                    }
+        
+                                    //  console.log(" Ok : " + resHostListByProjectId.length + " = " + (resultProcessHost.hostUp.num + resultProcessHost.hostDown.num));
+                                    if(resultProcessHost.tokenLineNotify && resultProcessHost.hostDown.num > 0)
+                                    {
+                                       //  console.log(resultProcessHost.tokenLineNotify);
+                                        const messageSegment        = [];
+                                        const url_line_notification = "https://notify-api.line.me/api/notify";
+                                        const hostDownList          = resultProcessHost.hostDown.dataList;
+                      
+                                        /**===  แบ่ง message line notification ในการส่ง limit 1000 คำ ===*/
+                                        const n = 4; //tweak this to add more items per line
+                                        const resultSplice = new Array(Math.ceil(hostDownList.length / n))
+                                        .fill()
+                                        .map(_ => hostDownList.splice(0, n));
+                                        /**===  /แบ่ง message line notification ในการส่ง limit 1000 คำ ===*/
+        
+                                        let message = '';
+                                        let num1    = 0;
+        
+                                        let message2 = '';
+                                        let num2     = 0;
+        
+                                        const dateNow = Moment(new Date()).format('YYYY/MM/DD HH:mm:ss');
+        
+                                        resultSplice.forEach((value1, key1) => {
+        
+                                            message  = '';
+                                            num1 = (key1+1);
+        
+                                            let page          = '( หน้า ' + num1 + ' )';
+                                            let titleHostDown = '\n\n เครื่องที่ Down ตอนนี้ ' + resultProcessHost.hostDown.num + ' เครื่อง';
+        
+                                            if(num1 > 1)
+                                            {
+                                                titleHostDown = '';
+                                                page = '( ต่อหน้า ' + num1 + ' )';
+                                            }
+
+                                            message += dateNow + ' ' + page;
+                                            message += '\n\n โครงการ : ' + resultProcessHost.projectName;
+                                            message += titleHostDown;
+                                        
+                                            // console.log("page : " + page);
+                                            // console.log("hostDown num : " + resultProcessHost.hostDown.num);
+        
+                                            message2 = '';
+                                            num2     = 0;
+                                            value1.forEach((value2, key2) => {
+        
+                                                // console.log("message : " + value2.message);
+                                                message2 += ' \n ' + value2.message;
+                                                num2 = (key2+1);
+                                            });
+        
+                                            message += message2;
+                                            
+                                            if(value1.length === num2)
+                                            {
+                                                messageSegment.push({
+                                                    'page'        : page, 
+                                                    'messageLast' : message
+                                                });
+                                            }
+                                            
+                                        });
+        
+                                        if(messageSegment.length > 0)
+                                        {
+                                            /** start line  notify */
+                                            let i = 0;
+                                            while (i < messageSegment.length) {
+                                                
+                                                request({
+                                                    method: 'POST',
+                                                    uri: url_line_notification,
+                                                    header: {
+                                                        'Content-Type': 'multipart/form-data',
+                                                    },
+                                                    auth: {
+                                                        bearer: resultProcessHost.tokenLineNotify,
+                                                    },
+                                                    form: {
+                                                        message: messageSegment[i].messageLast
+                                                    },
+                                                }, (err, httpResponse, body) => {
+                                                    if (err) {
+                                                        console.log(err)
+                                                    } else {
+
+                                                        // console.log("body : " + body);
+                                                        // console.log("httpResponse : " + httpResponse);
+                                                        
+                                                    }
+                                                });
+
+                                                setTimeout(()=>{}, 5000);
+                                                i++;
+                                            }
+                                        }
+                                        /** start line  notify */
+        
+                                    }
+
+                                    /*=== updateProject ===*/
+                                    const resultProjectUpdate = await ProjectUpdate(qb, projectDetail.id, {is_process : 0});
+                                    // console.log('resultProjectUpdate : ' + resultProjectUpdate)
+                                    resolve(resultProjectUpdate);
+                                    return;
+
+                                }
                             }
                         });
-                    }
-                });
+   
+                        // if(totalHost === numHost)
+                        // {
+                        //     /*=== updateProject ===*/
+                        //     const resultProjectUpdate = await ProjectUpdate(qb, projectDetail.id, {is_process : 0});
+                        //     resolve(resultProjectUpdate);
+                        //     return;
+                        // }
+
+                    });
+                }
             });
         }
-
-        // res.json({
-        //     status : 200,
-        //     data : resProjectList
-        // })
-
     });
-
-    
 }
+/**=== /Cronjob function */
 
-async function getProjectList(condition) {
-
-    const qb = await pool.get_connection();
-    try {
-        const conditionWhere = Object.assign({
-            is_process : 0
-        }, condition);
-
-        const response = await qb.select('*')
-            // .where({project_id : projectId})
-            .where(conditionWhere)
-            .get('lp_project');
-
-            // console.log("Query Ran: " + qb.last_query());
-            // console.log("Results:", response);
-            // return
-
-            if(response)
-            {
-                return response;
-            }
-
-    } catch (err) {
-        return console.error("Uh oh! Couldn't get results: " + err.msg);
-    } finally {
-        qb.release();
-    }
-}
-
-async function updateProject(id, setValue){
-
-    const qb = await pool.get_connection();
-
-    // await qb.update('lp_project', {'status': status}, {id: hostDetail.id});
-
-    try {
-        const update = await qb.update('lp_project', setValue, {id: id});
-        return update;
-    } catch (err) {
-        return console.error("Uh oh! Couldn't get results: " + err.msg);
-    } finally {
-        qb.release();
-    }
-}
-
-// var minutes = 5, the_interval = minutes * 60 * 1000;
-// setInterval(function() {
-//     checkHostInterval();
-//     console.log("Test interval 5 minutes");
-// }, the_interval);
+const JOB_SCHEDULE = '*/5 * * * *';
+// const JOB_SCHEDULE = '* * * * *';
+cron.schedule(JOB_SCHEDULE, () => {
+    console.log('Run cron job task every 5 minute');
+    checkHostCronJob();
+});
 
 app.listen('3001', (req, res) => {
     console.log('Server running on localhost:3001');

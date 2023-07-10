@@ -20,10 +20,12 @@
     "jsonwebtoken": "^9.0.0",
     "moment": "^2.29.4",
     "mysql": "^2.18.1",
+    "node-cron": "^3.0.2",
     "node-querybuilder": "^2.1.1",
     "nodemon": "^2.0.22",
     "ping": "^0.4.4",
     "request": "^2.88.2",
+    "ssh2-sftp-client": "^9.1.0",
     "url-status-code": "^2.0.0"
   }
 }
