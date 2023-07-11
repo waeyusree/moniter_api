@@ -2069,12 +2069,12 @@ async function loopCheckHostCronJob(qb, projectDetail)
 }
 /**=== /Cronjob function */
 
-const JOB_SCHEDULE = '*/5 * * * *';
-// const JOB_SCHEDULE = '* * * * *';
-cron.schedule(JOB_SCHEDULE, () => {
-    console.log('Run cron job task every 5 minute');
-    checkHostCronJob();
-});
+// const JOB_SCHEDULE = '*/5 * * * *';
+// // const JOB_SCHEDULE = '* * * * *';
+// cron.schedule(JOB_SCHEDULE, () => {
+//     console.log('Run cron job task every 5 minute');
+//     checkHostCronJob();
+// });
 
 app.listen('3001', (req, res) => {
     console.log('Server running on localhost:3001');
