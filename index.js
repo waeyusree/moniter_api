@@ -53,7 +53,7 @@ const { pool }      = require('./config/db');
 const excelJS       = require("exceljs");
 const { saveAs }    = require("file-saver");
 
-const cron          = require('node-cron');
+// const cron          = require('node-cron');
 
 require("dotenv").config();
 
