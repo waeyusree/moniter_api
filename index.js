@@ -45,7 +45,7 @@ const http          = require('http');
 const ping          = require('ping');
 const urlStatusCode = require('url-status-code')
 
-// const Client        = require('ssh2-sftp-client');
+const Client        = require('ssh2-sftp-client');
 
 const mysql         = require('mysql');
 const { pool }      = require('./config/db');
@@ -677,6 +677,17 @@ app.get('/cronjob', (req, res) => {
     res.status(200).send({
         message: 'sucess'
     });
+    return;
+});
+
+app.get('/cronjobserver', (req, res) => {
+
+    console.log('test cronjob server');
+    checkHostCronJob();
+
+    // res.status(200).send({
+    //     message: 'sucess'
+    // });
     return;
 });
 /** === /Test === */
@@ -1662,42 +1673,42 @@ async function processHost(qb, hostDetail)
             /** === /Database === */
 
             /** === FTP/SFTP === */
-            // if(hostDetail.duty_id && (
-            //     hostDetail.duty_id === resultDutyListObjNameToId['FTP'] || 
-            //     hostDetail.duty_id === resultDutyListObjNameToId['SFTP']
-            // ))
-            // {
-            //     const sftp  =   new Client();
-            //     sftp.connect({
-            //         host: use_ip,
-            //         port: hostDetail.port,
-            //         username: hostDetail.username,
-            //         password: hostDetail.password
-            //         // host: '202.139.198.209',
-            //         // port: '22',
-            //         // username: 'dgadmin',
-            //         // password: 'Gdcc@admin%$#@!'
-            //         // password: 'admin@dga$#@!'
-            //     }).then(() => {
-            //         return sftp.list('/var/');
-            //     }).then( async (data) => {
-            //         // console.log('ptp sucess : ' + data);
-            //         if(data.length > 0)
-            //         {
-            //             resultUpdateStatusSendLineNotify = await updateStatusSendLineNotify(qb, hostDetail, 200, false);
-            //             resolve(resultUpdateStatusSendLineNotify);
-            //             return;
-            //         }
-            //     }).catch( async (err) => {
-            //         // console.log('ptp error : ' + err.message);
-            //         resultUpdateStatusSendLineNotify = await updateStatusSendLineNotify(qb, hostDetail, 500, true, err.message);
-            //         resolve(resultUpdateStatusSendLineNotify);
-            //         return;
-            //     });
+            if(hostDetail.duty_id && (
+                hostDetail.duty_id === resultDutyListObjNameToId['FTP'] || 
+                hostDetail.duty_id === resultDutyListObjNameToId['SFTP']
+            ))
+            {
+                const sftp  =   new Client();
+                sftp.connect({
+                    host: use_ip,
+                    port: hostDetail.port,
+                    username: hostDetail.username,
+                    password: hostDetail.password
+                    // host: '202.139.198.209',
+                    // port: '22',
+                    // username: 'dgadmin',
+                    // password: 'Gdcc@admin%$#@!'
+                    // password: 'admin@dga$#@!'
+                }).then(() => {
+                    return sftp.list('/var/');
+                }).then( async (data) => {
+                    // console.log('ptp sucess : ' + data);
+                    if(data.length > 0)
+                    {
+                        resultUpdateStatusSendLineNotify = await updateStatusSendLineNotify(qb, hostDetail, 200, false);
+                        resolve(resultUpdateStatusSendLineNotify);
+                        return;
+                    }
+                }).catch( async (err) => {
+                    // console.log('ptp error : ' + err.message);
+                    resultUpdateStatusSendLineNotify = await updateStatusSendLineNotify(qb, hostDetail, 500, true, err.message);
+                    resolve(resultUpdateStatusSendLineNotify);
+                    return;
+                });
 
-            //     // close the client connection
-            //     sftp.end();
-            // }
+                // close the client connection
+                sftp.end();
+            }
             /** === /FTP/SFTP === */
 
         }
@@ -2069,10 +2080,10 @@ async function loopCheckHostCronJob(qb, projectDetail)
 }
 /**=== /Cronjob function */
 
-// const JOB_SCHEDULE = '*/5 * * * *';
+// const JOB_SCHEDULE = '*/15 * * * *';
 // // const JOB_SCHEDULE = '* * * * *';
 // cron.schedule(JOB_SCHEDULE, () => {
-//     console.log('Run cron job task every 5 minute');
+//     console.log('Run cron job task every 15 minute');
 //     checkHostCronJob();
 // });
 
