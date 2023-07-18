@@ -45,7 +45,7 @@ const http          = require('http');
 const ping          = require('ping');
 const urlStatusCode = require('url-status-code')
 
-const Client        = require('ssh2-sftp-client');
+// const Client        = require('ssh2-sftp-client');
 
 const mysql         = require('mysql');
 const { pool }      = require('./config/db');
@@ -1673,42 +1673,42 @@ async function processHost(qb, hostDetail)
             /** === /Database === */
 
             /** === FTP/SFTP === */
-            if(hostDetail.duty_id && (
-                hostDetail.duty_id === resultDutyListObjNameToId['FTP'] || 
-                hostDetail.duty_id === resultDutyListObjNameToId['SFTP']
-            ))
-            {
-                const sftp  =   new Client();
-                sftp.connect({
-                    host: use_ip,
-                    port: hostDetail.port,
-                    username: hostDetail.username,
-                    password: hostDetail.password
-                    // host: '202.139.198.209',
-                    // port: '22',
-                    // username: 'dgadmin',
-                    // password: 'Gdcc@admin%$#@!'
-                    // password: 'admin@dga$#@!'
-                }).then(() => {
-                    return sftp.list('/var/');
-                }).then( async (data) => {
-                    // console.log('ptp sucess : ' + data);
-                    if(data.length > 0)
-                    {
-                        resultUpdateStatusSendLineNotify = await updateStatusSendLineNotify(qb, hostDetail, 200, false);
-                        resolve(resultUpdateStatusSendLineNotify);
-                        return;
-                    }
-                }).catch( async (err) => {
-                    // console.log('ptp error : ' + err.message);
-                    resultUpdateStatusSendLineNotify = await updateStatusSendLineNotify(qb, hostDetail, 500, true, err.message);
-                    resolve(resultUpdateStatusSendLineNotify);
-                    return;
-                });
+            // if(hostDetail.duty_id && (
+            //     hostDetail.duty_id === resultDutyListObjNameToId['FTP'] || 
+            //     hostDetail.duty_id === resultDutyListObjNameToId['SFTP']
+            // ))
+            // {
+            //     const sftp  =   new Client();
+            //     sftp.connect({
+            //         host: use_ip,
+            //         port: hostDetail.port,
+            //         username: hostDetail.username,
+            //         password: hostDetail.password
+            //         // host: '202.139.198.209',
+            //         // port: '22',
+            //         // username: 'dgadmin',
+            //         // password: 'Gdcc@admin%$#@!'
+            //         // password: 'admin@dga$#@!'
+            //     }).then(() => {
+            //         return sftp.list('/var/');
+            //     }).then( async (data) => {
+            //         // console.log('ptp sucess : ' + data);
+            //         if(data.length > 0)
+            //         {
+            //             resultUpdateStatusSendLineNotify = await updateStatusSendLineNotify(qb, hostDetail, 200, false);
+            //             resolve(resultUpdateStatusSendLineNotify);
+            //             return;
+            //         }
+            //     }).catch( async (err) => {
+            //         // console.log('ptp error : ' + err.message);
+            //         resultUpdateStatusSendLineNotify = await updateStatusSendLineNotify(qb, hostDetail, 500, true, err.message);
+            //         resolve(resultUpdateStatusSendLineNotify);
+            //         return;
+            //     });
 
-                // close the client connection
-                sftp.end();
-            }
+            //     // close the client connection
+            //     sftp.end();
+            // }
             /** === /FTP/SFTP === */
 
         }
